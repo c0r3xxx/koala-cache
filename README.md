@@ -48,4 +48,13 @@ To run for a different platform, use the `--platform platform` flag. E.g.
 dx serve --platform desktop
 ```
 
+
+
+
+
+my startup
+
+```bash
+adb devices
 dx serve --android --device adb-2A141FDH300LG6-HLNb83._adb-tls-connect._tcp
+```
