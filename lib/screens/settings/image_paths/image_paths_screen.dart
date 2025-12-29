@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../../../services/data_store.dart';
 
 class ImagePathsScreen extends StatefulWidget {
   const ImagePathsScreen({super.key});
@@ -15,57 +15,50 @@ class _ImagePathsScreenState extends State<ImagePathsScreen> {
   List<DirectoryInfo> _directories = [];
   bool _isLoading = true;
   Set<String> _selectedPaths = {};
+  late DataStore _dataStore;
+  int _scannedCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadSelectedPaths();
+    _initDataStore();
+  }
+
+  Future<void> _initDataStore() async {
+    _dataStore = await DataStore.getInstance();
+    await _loadSelectedPaths();
     _scanForImageDirectories();
   }
 
   Future<void> _loadSelectedPaths() async {
-    final prefs = await SharedPreferences.getInstance();
+    final paths = await _dataStore.getSelectedImagePaths();
     setState(() {
-      _selectedPaths =
-          prefs.getStringList('selected_image_paths')?.toSet() ?? {};
+      _selectedPaths = paths;
     });
   }
 
   Future<void> _saveSelectedPaths() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('selected_image_paths', _selectedPaths.toList());
+    await _dataStore.saveSelectedImagePaths(_selectedPaths);
   }
 
   Future<void> _scanForImageDirectories() async {
     setState(() {
       _isLoading = true;
+      _directories = [];
+      _scannedCount = 0;
     });
 
-    // Request storage permissions
+    // Request storage permissions for Android 13+ (API 33+)
     if (Platform.isAndroid) {
-      PermissionStatus status;
-
       // Android 13+ (API 33+) requires READ_MEDIA_IMAGES
-      // Earlier versions use READ_EXTERNAL_STORAGE
-      if (await Permission.photos.isGranted ||
-          await Permission.storage.isGranted) {
-        status = PermissionStatus.granted;
-      } else {
-        // Try photos permission first (Android 13+)
-        status = await Permission.photos.request();
-
-        // If photos permission is not available, try storage permission
-        if (!status.isGranted) {
-          status = await Permission.storage.request();
-        }
-      }
+      final status = await Permission.photos.request();
 
       if (!status.isGranted) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: const Text(
-                'Storage permission is required to scan directories',
+                'Media access permission is required to scan image directories',
               ),
               action: SnackBarAction(
                 label: 'Settings',
@@ -80,8 +73,6 @@ class _ImagePathsScreenState extends State<ImagePathsScreen> {
         return;
       }
     }
-
-    List<DirectoryInfo> foundDirectories = [];
 
     try {
       // Get common storage directories
@@ -109,13 +100,15 @@ class _ImagePathsScreenState extends State<ImagePathsScreen> {
         }
       }
 
-      // Scan directories recursively
+      // Scan directories recursively with progressive updates
       for (final dir in searchDirs) {
-        await _scanDirectory(dir, foundDirectories, 0, 3); // Max depth of 3
+        await _scanDirectoryAsync(dir, 0, 3); // Max depth of 3
       }
 
       // Sort by image count (descending)
-      foundDirectories.sort((a, b) => b.imageCount.compareTo(a.imageCount));
+      setState(() {
+        _directories.sort((a, b) => b.imageCount.compareTo(a.imageCount));
+      });
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -125,20 +118,21 @@ class _ImagePathsScreenState extends State<ImagePathsScreen> {
     }
 
     setState(() {
-      _directories = foundDirectories;
       _isLoading = false;
     });
   }
 
-  Future<void> _scanDirectory(
+  Future<void> _scanDirectoryAsync(
     Directory dir,
-    List<DirectoryInfo> results,
     int currentDepth,
     int maxDepth,
   ) async {
     if (currentDepth > maxDepth) return;
 
     try {
+      // Use await with a small delay to allow UI updates
+      await Future.delayed(Duration.zero);
+
       final entities = await dir.list().toList();
       int imageCount = 0;
 
@@ -160,20 +154,38 @@ class _ImagePathsScreenState extends State<ImagePathsScreen> {
         }
       }
 
-      // Only add directories with images
+      // Update UI progressively with found directories
       if (imageCount > 0) {
-        results.add(DirectoryInfo(path: dir.path, imageCount: imageCount));
+        setState(() {
+          _directories.add(
+            DirectoryInfo(path: dir.path, imageCount: imageCount),
+          );
+          _scannedCount++;
+        });
       }
 
-      // Recursively scan subdirectories
-      for (final entity in entities) {
-        if (entity is Directory) {
-          // Skip hidden directories and common exclusions
-          final dirName = entity.path.split('/').last;
-          if (!dirName.startsWith('.') &&
-              !['node_modules', 'build', '.git', 'cache'].contains(dirName)) {
-            await _scanDirectory(entity, results, currentDepth + 1, maxDepth);
-          }
+      // Process subdirectories in batches to avoid blocking
+      final subdirs = entities.whereType<Directory>().toList();
+      for (int i = 0; i < subdirs.length; i++) {
+        final entity = subdirs[i];
+
+        // Skip hidden directories and common exclusions
+        final dirName = entity.path.split('/').last;
+        if (!dirName.startsWith('.') &&
+            ![
+              'node_modules',
+              'build',
+              '.git',
+              'cache',
+              'Android',
+              'AppData',
+            ].contains(dirName)) {
+          await _scanDirectoryAsync(entity, currentDepth + 1, maxDepth);
+        }
+
+        // Yield to UI thread every 5 directories
+        if (i % 5 == 0) {
+          await Future.delayed(Duration.zero);
         }
       }
     } catch (e) {
@@ -206,13 +218,21 @@ class _ImagePathsScreenState extends State<ImagePathsScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(
+          ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('Scanning for image directories...'),
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
+                  const Text('Scanning for image directories...'),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Found $_scannedCount directories',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.secondary,
+                    ),
+                  ),
                 ],
               ),
             )
@@ -238,13 +258,6 @@ class _ImagePathsScreenState extends State<ImagePathsScreen> {
             )
           : Column(
               children: [
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Text(
-                    '${_selectedPaths.length} of ${_directories.length} directories selected',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
                 Expanded(
                   child: ListView.builder(
                     itemCount: _directories.length,
