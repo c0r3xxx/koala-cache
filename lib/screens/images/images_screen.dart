@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import '../../services/data_store.dart';
+import '../../services/sync_files.dart';
 
 class ImagesScreen extends StatefulWidget {
   const ImagesScreen({super.key});
@@ -90,10 +91,18 @@ class _ImagesScreenState extends State<ImagesScreen> {
         title: const Text('Images'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.cloud_upload),
+            onPressed: () async {
+              await SyncFiles.uploadImages();
+            },
+            tooltip: 'Upload Images',
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadImages,
             tooltip: 'Refresh',
           ),
+
           if (_imagePaths.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(right: 16.0),

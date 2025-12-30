@@ -19,4 +19,5 @@ samples, guidance on mobile development, and a full API reference.
 
 ```
 adb pair 192.168.178.33:42313
+flutter run -d "adb-2A141FDH300LG6-HLNb83._adb-tls-connect._tcp"
 ```

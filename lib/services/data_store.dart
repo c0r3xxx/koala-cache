@@ -3,6 +3,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// DataStore service for managing persistent application data
 class DataStore {
   static const String _selectedImagePathsKey = 'selected_image_paths';
+  static const String _serverAddressKey = 'server_address';
+  static const String _serverPortKey = 'server_port';
+  static const String _useHttpsKey = 'use_https';
 
   static DataStore? _instance;
   final SharedPreferences _prefs;
@@ -52,5 +55,44 @@ class DataStore {
   Future<bool> isPathSelected(String path) async {
     final paths = await getSelectedImagePaths();
     return paths.contains(path);
+  }
+
+  /// Get the server address
+  Future<String> getServerAddress() async {
+    return _prefs.getString(_serverAddressKey) ?? 'localhost';
+  }
+
+  /// Save the server address
+  Future<bool> saveServerAddress(String address) async {
+    return await _prefs.setString(_serverAddressKey, address);
+  }
+
+  /// Get the server port
+  Future<int> getServerPort() async {
+    return _prefs.getInt(_serverPortKey) ?? 8080;
+  }
+
+  /// Save the server port
+  Future<bool> saveServerPort(int port) async {
+    return await _prefs.setInt(_serverPortKey, port);
+  }
+
+  /// Get whether to use HTTPS
+  Future<bool> getUseHttps() async {
+    return _prefs.getBool(_useHttpsKey) ?? false;
+  }
+
+  /// Save whether to use HTTPS
+  Future<bool> saveUseHttps(bool useHttps) async {
+    return await _prefs.setBool(_useHttpsKey, useHttps);
+  }
+
+  /// Get the full server URL
+  Future<String> getServerUrl() async {
+    final address = await getServerAddress();
+    final port = await getServerPort();
+    final useHttps = await getUseHttps();
+    final protocol = useHttps ? 'https' : 'http';
+    return '$protocol://$address:$port';
   }
 }
