@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- For Android 13+ (API 33+) only -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <!-- For Android 10+ (API 29+) to access location metadata from images -->
+    <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION"/>
     
     <application
         android:label="koala_cache"

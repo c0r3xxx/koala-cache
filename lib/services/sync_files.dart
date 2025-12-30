@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'data_store.dart';
+import '../config/consts.dart';
 
 class SyncFiles {
   /// Upload images to the backend server
@@ -56,14 +57,13 @@ class SyncFiles {
   /// Get all image files from the selected paths
   static Future<List<File>> _getImageFiles(Set<String> paths) async {
     final imageFiles = <File>[];
-    final imageExtensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'};
 
     for (final pathString in paths) {
       final entity = Directory(pathString);
 
       if (await entity.exists()) {
         // List all files in the directory
-        await for (final file in entity.list(recursive: true)) {
+        await for (final file in entity.list()) {
           if (file is File) {
             final extension = path.extension(file.path).toLowerCase();
             if (imageExtensions.contains(extension)) {
@@ -82,23 +82,18 @@ class SyncFiles {
     String serverUrl,
     File imageFile,
   ) async {
-    final uri = Uri.parse('$serverUrl/img');
-
-    final request = http.MultipartRequest('POST', uri);
-
-    // Add the image file
     final fileName = path.basename(imageFile.path);
-    request.files.add(
-      await http.MultipartFile.fromPath(
-        'image',
-        imageFile.path,
-        filename: fileName,
-      ),
-    );
+    final uri = Uri.parse('$serverUrl/img/$fileName');
 
-    // Send the request
-    final streamedResponse = await request.send();
-    final response = await http.Response.fromStream(streamedResponse);
+    // Read image file as bytes
+    final imageBytes = await imageFile.readAsBytes();
+
+    // Send POST request with image bytes as body
+    final response = await http.post(
+      uri,
+      body: imageBytes,
+      headers: {'Content-Type': 'application/octet-stream'},
+    );
 
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception(

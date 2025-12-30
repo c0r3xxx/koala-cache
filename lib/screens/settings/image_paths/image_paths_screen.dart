@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../services/data_store.dart';
+import '../../../config/consts.dart';
 
 /// Screen for managing image import paths
 class ImagePathsScreen extends StatefulWidget {
@@ -18,29 +19,6 @@ class _ImagePathsScreenState extends State<ImagePathsScreen> {
   Set<String> _selectedPaths = {};
   DataStore? _dataStore;
   int _scannedCount = 0;
-
-  static const List<String> _imageExtensions = [
-    'jpg',
-    'jpeg',
-    'png',
-    'gif',
-    'bmp',
-    'webp',
-    'heic',
-    'heif',
-  ];
-
-  static const List<String> _excludedDirs = [
-    'node_modules',
-    'build',
-    '.git',
-    'cache',
-    'Android',
-    'AppData',
-  ];
-
-  static const int _maxScanDepth = 3;
-  static const int _batchSize = 5;
 
   @override
   void initState() {
@@ -154,13 +132,11 @@ class _ImagePathsScreenState extends State<ImagePathsScreen> {
 
   Future<void> _scanDirectories(List<Directory> searchDirs) async {
     for (final dir in searchDirs) {
-      await _scanDirectoryRecursive(dir, 0);
+      await _scanDirectory(dir);
     }
   }
 
-  Future<void> _scanDirectoryRecursive(Directory dir, int depth) async {
-    if (depth > _maxScanDepth) return;
-
+  Future<void> _scanDirectory(Directory dir) async {
     try {
       await Future.delayed(Duration.zero); // Allow UI updates
 
@@ -170,8 +146,6 @@ class _ImagePathsScreenState extends State<ImagePathsScreen> {
       if (imageCount > 0) {
         _addDirectory(dir.path, imageCount);
       }
-
-      await _scanSubdirectories(entities, depth);
     } catch (e) {
       // Skip inaccessible directories
     }
@@ -179,8 +153,8 @@ class _ImagePathsScreenState extends State<ImagePathsScreen> {
 
   int _countImages(List<FileSystemEntity> entities) {
     return entities.whereType<File>().where((file) {
-      final extension = file.path.split('.').last.toLowerCase();
-      return _imageExtensions.contains(extension);
+      final extension = '.${file.path.split('.').last.toLowerCase()}';
+      return imageExtensions.contains(extension);
     }).length;
   }
 
@@ -191,29 +165,6 @@ class _ImagePathsScreenState extends State<ImagePathsScreen> {
         _scannedCount++;
       });
     }
-  }
-
-  Future<void> _scanSubdirectories(
-    List<FileSystemEntity> entities,
-    int currentDepth,
-  ) async {
-    final subdirs = entities
-        .whereType<Directory>()
-        .where(_shouldScanDirectory)
-        .toList();
-
-    for (int i = 0; i < subdirs.length; i++) {
-      await _scanDirectoryRecursive(subdirs[i], currentDepth + 1);
-
-      if (i % _batchSize == 0) {
-        await Future.delayed(Duration.zero); // Yield to UI
-      }
-    }
-  }
-
-  bool _shouldScanDirectory(Directory dir) {
-    final dirName = dir.path.split('/').last;
-    return !dirName.startsWith('.') && !_excludedDirs.contains(dirName);
   }
 
   void _sortDirectories() {
