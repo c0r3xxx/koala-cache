@@ -1,2 +1,2 @@
 # TODO
-solve hash colission problem
+solve potential hash colission problem for images

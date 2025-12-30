@@ -1,0 +1,16 @@
+services:
+  db:
+    image: docker.io/library/postgres:18-alpine
+    restart: always
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    environment:
+      POSTGRES_USER: koala_user
+      POSTGRES_PASSWORD: koala_password
+      POSTGRES_DB: koala_db
+    ports:
+      - "5432:5432"
+
+volumes:
+  postgres_data:

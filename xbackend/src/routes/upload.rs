@@ -1,8 +1,6 @@
+use crate::img::{compute_hash, print_upload_info};
 use axum::{body::Bytes, extract::Path, http::StatusCode};
 use std::{env, path::PathBuf};
-
-use super::exif::print_upload_info;
-use super::hash::compute_hash;
 
 pub async fn upload_image(
     Path(image_name): Path<String>,
