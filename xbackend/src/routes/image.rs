@@ -2,52 +2,55 @@ use crate::db::insert_image;
 use crate::img::{compute_hash, extract_gps_numeric};
 use crate::routes::auth::Claims;
 use crate::types::Image;
-use axum::{
-    Extension,
-    body::Bytes,
-    extract::{Path, State},
-    http::StatusCode,
-};
-use chrono::Utc;
+use axum::{Extension, Json, extract::State, http::StatusCode};
+use base64::{Engine as _, engine::general_purpose};
+use chrono::{DateTime, Utc};
+use serde::Deserialize;
 use sqlx::PgPool;
 use std::{env, path::PathBuf};
+
+#[derive(Deserialize)]
+pub struct UploadImageRequest {
+    pub content: String, // base64 encoded image
+    pub extension: String,
+    pub image_name: String,
+    pub created_at: DateTime<Utc>,
+    pub modified_at: DateTime<Utc>,
+}
 
 pub async fn upload_image(
     State(pool): State<PgPool>,
     Extension(claims): Extension<Claims>,
-    Path(image_name): Path<String>,
-    body: Bytes,
+    Json(request): Json<UploadImageRequest>,
 ) -> Result<(StatusCode, String), StatusCode> {
     let storage_path =
         env::var("IMAGE_STORAGE_PATH").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let hash = compute_hash(body.as_ref());
+    // Decode base64 content
+    let body = general_purpose::STANDARD
+        .decode(&request.content)
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    // Extract extension from image_name, return error if none
-    let path = PathBuf::from(&image_name);
-    let extension = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .ok_or(StatusCode::BAD_REQUEST)?;
+    let hash = compute_hash(&body);
 
-    let file_name = format!("{}.{}", hash, extension);
+    let file_name = format!("{}.{}", hash, request.extension);
     let file_path = PathBuf::from(&storage_path).join(&file_name);
 
-    tokio::fs::write(&file_path, body.as_ref())
+    tokio::fs::write(&file_path, &body)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Extract GPS coordinates from EXIF data
-    let (latitude, longitude) = extract_gps_numeric(body.as_ref());
+    let (latitude, longitude) = extract_gps_numeric(&body);
 
     // Create image record
     let image = Image {
         hash: hash.clone(),
-        extension: extension.to_string(),
+        extension: request.extension,
         owner: claims.sub,
-        image_name: Some(image_name),
-        created_at: Utc::now(),
-        modified_at: Utc::now(),
+        image_name: Some(request.image_name),
+        created_at: request.created_at,
+        modified_at: request.modified_at,
         longitude,
         latitude,
     };

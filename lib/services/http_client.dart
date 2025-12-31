@@ -13,48 +13,6 @@ class ConnectionTestResult {
 
 /// HTTP client service for making API requests
 class HttpClient {
-  /// Decode JWT token and check if it's valid for at least one hour
-  static bool _isTokenValid(String token) {
-    try {
-      final parts = token.split('.');
-      if (parts.length != 3) return false;
-
-      // Decode the payload (second part)
-      final payload = parts[1];
-      // Add padding if needed
-      final normalized = base64Url.normalize(payload);
-      final decoded = utf8.decode(base64Url.decode(normalized));
-      final payloadMap = jsonDecode(decoded) as Map<String, dynamic>;
-
-      // Check expiration
-      final exp = payloadMap['exp'] as int?;
-      if (exp == null) return false;
-
-      final expirationTime = DateTime.fromMillisecondsSinceEpoch(exp * 1000);
-      final now = DateTime.now();
-      final oneHourFromNow = now.add(const Duration(hours: 1));
-
-      // Token must be valid for at least one more hour
-      return expirationTime.isAfter(oneHourFromNow);
-    } catch (e) {
-      return false;
-    }
-  }
-
-  /// Ensure we have a valid JWT token, login if necessary
-  static Future<ConnectionTestResult> _ensureValidToken() async {
-    final secureDataStore = await SecureDataStore.getInstance();
-    final token = await secureDataStore.getToken();
-
-    // If token exists and is valid, we're good
-    if (token.isNotEmpty && _isTokenValid(token)) {
-      return ConnectionTestResult(success: true, message: 'Token valid');
-    }
-
-    // Otherwise, login to get a new token
-    return await login();
-  }
-
   /// Make an authenticated HTTP request with JWT bearer token
   static Future<http.Response> _authenticatedRequest(
     String method,
@@ -207,22 +165,71 @@ class HttpClient {
   /// Upload an image file to the server with authentication
   static Future<void> uploadImage(
     String serverUrl,
-    List<int> imageBytes,
+    String base64Content,
     String fileName,
+    String extension,
+    DateTime createdAt,
+    DateTime modifiedAt,
   ) async {
-    final url = '$serverUrl/img/$fileName';
+    final url = '$serverUrl/img';
 
-    final response = await _authenticatedRequest(
-      'POST',
-      url,
-      headers: {'Content-Type': 'application/octet-stream'},
-      body: imageBytes,
-    );
+    // Create JSON payload
+    final payload = {
+      'content': base64Content,
+      'extension': extension,
+      'image_name': fileName,
+      'created_at': createdAt.toUtc().toIso8601String(),
+      'modified_at': modifiedAt.toUtc().toIso8601String(),
+    };
+
+    final response = await _authenticatedRequest('POST', url, body: payload);
 
     if (![200, 201, 409].contains(response.statusCode)) {
       throw Exception(
         'Server returned status ${response.statusCode}: ${response.body}',
       );
     }
+  }
+
+  /// Decode JWT token and check if it's valid for at least one hour
+  static bool _isTokenValid(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return false;
+
+      // Decode the payload (second part)
+      final payload = parts[1];
+      // Add padding if needed
+      final normalized = base64Url.normalize(payload);
+      final decoded = utf8.decode(base64Url.decode(normalized));
+      final payloadMap = jsonDecode(decoded) as Map<String, dynamic>;
+
+      // Check expiration
+      final exp = payloadMap['exp'] as int?;
+      if (exp == null) return false;
+
+      final expirationTime = DateTime.fromMillisecondsSinceEpoch(exp * 1000);
+      final now = DateTime.now();
+      final oneHourFromNow = now.add(const Duration(hours: 1));
+
+      // Token must be valid for at least one more hour
+      return expirationTime.isAfter(oneHourFromNow);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Ensure we have a valid JWT token, login if necessary
+  static Future<ConnectionTestResult> _ensureValidToken() async {
+    final secureDataStore = await SecureDataStore.getInstance();
+    final token = await secureDataStore.getToken();
+
+    // If token exists and is valid, we're good
+    if (token.isNotEmpty && _isTokenValid(token)) {
+      return ConnectionTestResult(success: true, message: 'Token valid');
+    }
+
+    // Otherwise, login to get a new token
+    return await login();
   }
 }

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:path/path.dart' as path;
 import 'data_store.dart';
 import 'http_client.dart';
@@ -83,11 +84,27 @@ class SyncFiles {
     File imageFile,
   ) async {
     final fileName = path.basename(imageFile.path);
+    final extension = path.extension(imageFile.path).toLowerCase();
 
     // Read image file as bytes
     final imageBytes = await imageFile.readAsBytes();
 
+    // Base64 encode the image bytes
+    final base64Image = base64Encode(imageBytes);
+
+    // Get file metadata
+    final stat = await imageFile.stat();
+    final createdAt = stat.changed;
+    final modifiedAt = stat.modified;
+
     // Use authenticated upload from HttpClient
-    await HttpClient.uploadImage(serverUrl, imageBytes, fileName);
+    await HttpClient.uploadImage(
+      serverUrl,
+      base64Image,
+      fileName,
+      extension,
+      createdAt,
+      modifiedAt,
+    );
   }
 }

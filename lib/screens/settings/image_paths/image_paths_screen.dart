@@ -19,6 +19,7 @@ class _ImagePathsScreenState extends State<ImagePathsScreen> {
   Set<String> _selectedPaths = {};
   DataStore? _dataStore;
   int _scannedCount = 0;
+  static const int _maxDepth = 4; // Limit recursion depth
 
   @override
   void initState() {
@@ -136,7 +137,9 @@ class _ImagePathsScreenState extends State<ImagePathsScreen> {
     }
   }
 
-  Future<void> _scanDirectory(Directory dir) async {
+  Future<void> _scanDirectory(Directory dir, {int depth = 0}) async {
+    if (depth > _maxDepth) return;
+
     try {
       await Future.delayed(Duration.zero); // Allow UI updates
 
@@ -145,6 +148,13 @@ class _ImagePathsScreenState extends State<ImagePathsScreen> {
 
       if (imageCount > 0) {
         _addDirectory(dir.path, imageCount);
+      }
+
+      // Recursively scan subdirectories
+      for (final entity in entities) {
+        if (entity is Directory) {
+          await _scanDirectory(entity, depth: depth + 1);
+        }
       }
     } catch (e) {
       // Skip inaccessible directories

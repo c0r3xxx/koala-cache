@@ -10,7 +10,7 @@ pub async fn init(pool: sqlx::PgPool) {
         // Protected routes - require authentication
         .merge(
             Router::new()
-                .route("/img/{image_name}", post(upload_image))
+                .route("/img", post(upload_image))
                 .route("/health-auth", get(health))
                 .layer(middleware::from_fn(auth_middleware)),
         )
