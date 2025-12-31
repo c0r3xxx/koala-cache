@@ -6,6 +6,7 @@ class DataStore {
   static const String _serverAddressKey = 'server_address';
   static const String _serverPortKey = 'server_port';
   static const String _useHttpsKey = 'use_https';
+  static const String _imageHashMappingPrefix = 'image_hash_';
 
   static DataStore? _instance;
   final SharedPreferences _prefs;
@@ -94,5 +95,38 @@ class DataStore {
     final useHttps = await getUseHttps();
     final protocol = useHttps ? 'https' : 'http';
     return '$protocol://$address:$port';
+  }
+
+  /// Save image hash to path mapping
+  Future<bool> saveImageHashMapping(String hash, String imagePath) async {
+    return await _prefs.setString('$_imageHashMappingPrefix$hash', imagePath);
+  }
+
+  /// Get image path for a given hash
+  Future<String?> getImagePathForHash(String hash) async {
+    return _prefs.getString('$_imageHashMappingPrefix$hash');
+  }
+
+  /// Remove image hash mapping
+  Future<bool> removeImageHashMapping(String hash) async {
+    return await _prefs.remove('$_imageHashMappingPrefix$hash');
+  }
+
+  /// Get all image hash mappings
+  Future<Map<String, String>> getAllImageHashMappings() async {
+    final Map<String, String> mappings = {};
+    final keys = _prefs.getKeys();
+
+    for (final key in keys) {
+      if (key.startsWith(_imageHashMappingPrefix)) {
+        final hash = key.substring(_imageHashMappingPrefix.length);
+        final path = _prefs.getString(key);
+        if (path != null) {
+          mappings[hash] = path;
+        }
+      }
+    }
+
+    return mappings;
   }
 }

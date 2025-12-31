@@ -5,7 +5,7 @@ use crate::types::Image;
 use axum::{Extension, Json, extract::State, http::StatusCode};
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, Utc};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::{env, path::PathBuf};
 
@@ -18,11 +18,16 @@ pub struct UploadImageRequest {
     pub modified_at: DateTime<Utc>,
 }
 
+#[derive(Serialize)]
+pub struct UploadImageResponse {
+    pub hash: String,
+}
+
 pub async fn upload_image(
     State(pool): State<PgPool>,
     Extension(claims): Extension<Claims>,
     Json(request): Json<UploadImageRequest>,
-) -> Result<(StatusCode, String), StatusCode> {
+) -> Result<(StatusCode, Json<UploadImageResponse>), StatusCode> {
     let storage_path =
         env::var("IMAGE_STORAGE_PATH").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -71,5 +76,5 @@ pub async fn upload_image(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    Ok((StatusCode::CREATED, hash))
+    Ok((StatusCode::CREATED, Json(UploadImageResponse { hash })))
 }

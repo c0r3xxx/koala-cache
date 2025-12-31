@@ -39,9 +39,17 @@ class SyncFiles {
 
       for (final imageFile in imageFiles) {
         try {
-          await _uploadSingleImage(serverUrl, imageFile);
+          final hash = await _uploadSingleImage(serverUrl, imageFile);
+          if (hash != null) {
+            // Store the hash to image path mapping
+            await dataStore.saveImageHashMapping(hash, imageFile.path);
+            print('Uploaded: ${path.basename(imageFile.path)} (hash: $hash)');
+          } else {
+            print(
+              'Uploaded: ${path.basename(imageFile.path)} (no hash returned)',
+            );
+          }
           successCount++;
-          print('Uploaded: ${path.basename(imageFile.path)}');
         } catch (e) {
           failureCount++;
           print('Failed to upload ${path.basename(imageFile.path)}: $e');
@@ -79,7 +87,7 @@ class SyncFiles {
   }
 
   /// Upload a single image file to the server
-  static Future<void> _uploadSingleImage(
+  static Future<String?> _uploadSingleImage(
     String serverUrl,
     File imageFile,
   ) async {
@@ -97,8 +105,8 @@ class SyncFiles {
     final createdAt = stat.changed;
     final modifiedAt = stat.modified;
 
-    // Use authenticated upload from HttpClient
-    await HttpClient.uploadImage(
+    // Use authenticated upload from HttpClient and return the hash
+    return await HttpClient.uploadImage(
       serverUrl,
       base64Image,
       fileName,
