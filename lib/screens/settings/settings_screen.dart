@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'image_paths/image_paths_screen.dart';
-import 'server_address/server_address_screen.dart';
+import 'server_settings/server_settings_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});

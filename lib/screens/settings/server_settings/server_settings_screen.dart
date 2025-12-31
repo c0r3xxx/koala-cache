@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../../services/data_store.dart';
+import '../../../services/secure_data_store.dart';
+import '../../../services/http_client.dart';
 
 /// Screen for configuring the Koala Cache server address
 class ServerAddressScreen extends StatefulWidget {
@@ -13,9 +14,13 @@ class ServerAddressScreen extends StatefulWidget {
 class _ServerAddressScreenState extends State<ServerAddressScreen> {
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _portController = TextEditingController();
+  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
   DataStore? _dataStore;
+  SecureDataStore? _secureDataStore;
   bool _isLoading = true;
   bool _useHttps = false;
+  bool _obscurePassword = true;
 
   @override
   void initState() {
@@ -23,20 +28,27 @@ class _ServerAddressScreenState extends State<ServerAddressScreen> {
     _initDataStore();
     _addressController.addListener(_saveServerConfig);
     _portController.addListener(_saveServerConfig);
+    _usernameController.addListener(_saveCredentials);
+    _passwordController.addListener(_saveCredentials);
   }
 
   @override
   void dispose() {
     _addressController.removeListener(_saveServerConfig);
     _portController.removeListener(_saveServerConfig);
+    _usernameController.removeListener(_saveCredentials);
+    _passwordController.removeListener(_saveCredentials);
     _addressController.dispose();
     _portController.dispose();
+    _usernameController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
   Future<void> _initDataStore() async {
     try {
       _dataStore = await DataStore.getInstance();
+      _secureDataStore = await SecureDataStore.getInstance();
       await _loadServerConfig();
     } catch (e) {
       _showError('Failed to initialize: $e');
@@ -48,17 +60,21 @@ class _ServerAddressScreenState extends State<ServerAddressScreen> {
   }
 
   Future<void> _loadServerConfig() async {
-    if (_dataStore == null) return;
+    if (_dataStore == null || _secureDataStore == null) return;
 
     final address = await _dataStore!.getServerAddress();
     final port = await _dataStore!.getServerPort();
     final useHttps = await _dataStore!.getUseHttps();
+    final username = await _secureDataStore!.getUsername();
+    final password = await _secureDataStore!.getPassword();
 
     if (mounted) {
       setState(() {
         _addressController.text = address;
         _portController.text = port.toString();
         _useHttps = useHttps;
+        _usernameController.text = username;
+        _passwordController.text = password;
       });
     }
   }
@@ -83,6 +99,13 @@ class _ServerAddressScreenState extends State<ServerAddressScreen> {
     await _dataStore!.saveUseHttps(_useHttps);
   }
 
+  Future<void> _saveCredentials() async {
+    if (_secureDataStore == null) return;
+
+    await _secureDataStore!.saveUsername(_usernameController.text.trim());
+    await _secureDataStore!.savePassword(_passwordController.text.trim());
+  }
+
   Future<void> _testConnection() async {
     final address = _addressController.text.trim();
     final portText = _portController.text.trim();
@@ -93,9 +116,6 @@ class _ServerAddressScreenState extends State<ServerAddressScreen> {
       return;
     }
 
-    final protocol = _useHttps ? 'https' : 'http';
-    final url = '$protocol://$address:$port';
-
     // Show loading dialog
     if (mounted) {
       showDialog(
@@ -105,29 +125,15 @@ class _ServerAddressScreenState extends State<ServerAddressScreen> {
       );
     }
 
-    bool success = false;
-    String message = '';
-
-    try {
-      final response = await http
-          .get(Uri.parse(url))
-          .timeout(const Duration(seconds: 3));
-      success = response.statusCode >= 200 && response.statusCode < 500;
-      message = success
-          ? 'Connection successful'
-          : 'Server returned error: ${response.statusCode}';
-    } catch (e) {
-      success = false;
-      message = 'Connection failed: ${e.toString()}';
-    }
+    final result = await HttpClient.testConnection();
 
     if (mounted) {
       Navigator.of(context).pop(); // Close loading dialog
       ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(message),
-          backgroundColor: success ? Colors.green : Colors.red,
+          content: Text(result.message),
+          backgroundColor: result.success ? Colors.green : Colors.red,
         ),
       );
     }
@@ -200,6 +206,39 @@ class _ServerAddressScreenState extends State<ServerAddressScreen> {
                   title: const Text('Use HTTPS'),
                   subtitle: const Text('Enable secure connection'),
                   secondary: const Icon(Icons.lock),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _usernameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Username',
+                    hintText: 'Enter username',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.person),
+                  ),
+                  keyboardType: TextInputType.text,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _passwordController,
+                  decoration: InputDecoration(
+                    labelText: 'Password',
+                    hintText: 'Enter password',
+                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.key),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility
+                            : Icons.visibility_off,
+                      ),
+                      onPressed: () {
+                        setState(() => _obscurePassword = !_obscurePassword);
+                      },
+                    ),
+                  ),
+                  obscureText: _obscurePassword,
+                  keyboardType: TextInputType.visiblePassword,
                 ),
               ],
             ),
