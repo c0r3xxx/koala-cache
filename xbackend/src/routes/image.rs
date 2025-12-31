@@ -1,4 +1,4 @@
-use crate::db::insert_image;
+use crate::db::{get_image_hashes_by_owner, insert_image};
 use crate::img::{compute_hash, extract_gps_numeric};
 use crate::routes::auth::Claims;
 use crate::types::Image;
@@ -77,4 +77,23 @@ pub async fn upload_image(
         })?;
 
     Ok((StatusCode::CREATED, Json(UploadImageResponse { hash })))
+}
+
+#[derive(Serialize)]
+pub struct GetImageHashesResponse {
+    pub hashes: Vec<String>,
+}
+
+pub async fn get_user_image_hashes(
+    State(pool): State<PgPool>,
+    Extension(claims): Extension<Claims>,
+) -> Result<Json<GetImageHashesResponse>, StatusCode> {
+    let hashes = get_image_hashes_by_owner(&pool, &claims.sub)
+        .await
+        .map_err(|e| {
+            eprintln!("Database error: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(GetImageHashesResponse { hashes }))
 }

@@ -21,3 +21,22 @@ pub async fn insert_image(pool: &PgPool, image: &Image) -> Result<(), sqlx::Erro
 
     Ok(())
 }
+
+pub async fn get_image_hashes_by_owner(
+    pool: &PgPool,
+    owner: &str,
+) -> Result<Vec<String>, sqlx::Error> {
+    let records = sqlx::query!(
+        r#"
+        SELECT hash
+        FROM images
+        WHERE owner = $1
+        ORDER BY created_at DESC
+        "#,
+        owner
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(records.into_iter().map(|r| r.hash).collect())
+}
