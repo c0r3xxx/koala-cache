@@ -2,7 +2,7 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::env;
 
 pub async fn init() -> PgPool {
-    let database_url = env::var("DSN").expect("DSN must be set in .env file");
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set in .env file");
 
     let pool = PgPoolOptions::new()
         .max_connections(5)

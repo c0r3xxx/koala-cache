@@ -14,9 +14,7 @@ class SecureDataStore {
   /// Get the singleton instance of SecureDataStore
   static Future<SecureDataStore> getInstance() async {
     if (_instance == null) {
-      const storage = FlutterSecureStorage(
-        aOptions: AndroidOptions(encryptedSharedPreferences: true),
-      );
+      const storage = FlutterSecureStorage();
       _instance = SecureDataStore._(storage);
     }
     return _instance!;

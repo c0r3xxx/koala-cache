@@ -1,7 +1,7 @@
 import 'dart:io';
-import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'data_store.dart';
+import 'http_client.dart';
 import '../config/consts.dart';
 
 class SyncFiles {
@@ -83,22 +83,11 @@ class SyncFiles {
     File imageFile,
   ) async {
     final fileName = path.basename(imageFile.path);
-    final uri = Uri.parse('$serverUrl/img/$fileName');
 
     // Read image file as bytes
     final imageBytes = await imageFile.readAsBytes();
 
-    // Send POST request with image bytes as body
-    final response = await http.post(
-      uri,
-      body: imageBytes,
-      headers: {'Content-Type': 'application/octet-stream'},
-    );
-
-    if (response.statusCode != 200 && response.statusCode != 201) {
-      throw Exception(
-        'Server returned status ${response.statusCode}: ${response.body}',
-      );
-    }
+    // Use authenticated upload from HttpClient
+    await HttpClient.uploadImage(serverUrl, imageBytes, fileName);
   }
 }

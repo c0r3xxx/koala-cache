@@ -1,5 +1,5 @@
 mod exif;
 mod hash;
 
-pub use exif::print_upload_info;
+pub use exif::extract_gps_numeric;
 pub use hash::compute_hash;

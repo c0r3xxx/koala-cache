@@ -1,3 +1,3 @@
 mod types;
 
-pub use types::{User, UserCredentials};
+pub use types::{Image, User, UserCredentials};

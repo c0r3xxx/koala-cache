@@ -3,3 +3,14 @@ CREATE TABLE users (
     password VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE images (
+    hash VARCHAR(64) PRIMARY KEY,
+    extension VARCHAR(10),
+    owner VARCHAR(255) REFERENCES users(username),
+    image_name VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    modified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    longitude DOUBLE PRECISION,
+    latitude DOUBLE PRECISION
+);

@@ -203,4 +203,26 @@ class HttpClient {
       );
     }
   }
+
+  /// Upload an image file to the server with authentication
+  static Future<void> uploadImage(
+    String serverUrl,
+    List<int> imageBytes,
+    String fileName,
+  ) async {
+    final url = '$serverUrl/img/$fileName';
+
+    final response = await _authenticatedRequest(
+      'POST',
+      url,
+      headers: {'Content-Type': 'application/octet-stream'},
+      body: imageBytes,
+    );
+
+    if (![200, 201, 409].contains(response.statusCode)) {
+      throw Exception(
+        'Server returned status ${response.statusCode}: ${response.body}',
+      );
+    }
+  }
 }

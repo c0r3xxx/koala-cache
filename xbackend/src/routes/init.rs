@@ -1,6 +1,6 @@
 use axum::{Router, extract::DefaultBodyLimit, middleware, routing::get, routing::post};
 
-use crate::routes::{auth::login, auth_middleware, health::health, upload::upload_image};
+use crate::routes::{auth::login, auth_middleware, health::health, image::upload_image};
 
 pub async fn init(pool: sqlx::PgPool) {
     let app = Router::new()
