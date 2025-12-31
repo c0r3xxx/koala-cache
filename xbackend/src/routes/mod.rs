@@ -1,3 +1,4 @@
+mod auth;
 mod health;
 mod init;
 mod upload;

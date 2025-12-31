@@ -1,13 +1,20 @@
 mod db;
 mod img;
 mod routes;
+mod types;
 
 #[tokio::main]
 async fn main() {
     dotenv::dotenv().ok();
 
-    let db_pool = db::init().await;
-    println!("Database connected successfully!");
+    // Initialize tracing subscriber for logging
+    tracing_subscriber::fmt()
+        .with_target(false)
+        .with_thread_ids(true)
+        .with_level(true)
+        .init();
 
-    routes::init().await;
+    let pool = db::init().await;
+
+    routes::init(pool).await;
 }
