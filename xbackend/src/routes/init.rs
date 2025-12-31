@@ -16,13 +16,3 @@ pub async fn init(pool: sqlx::PgPool) {
 
     axum::serve(listener, app).await.unwrap();
 }
-
-/* db::create_user(
-    &pool,
-    &UserCredentials {
-        username: "aaron".to_string(),
-        password: "0ekX8eIIC6Ft3P8W".to_string(),
-    },
-)
-.await
-.unwrap(); */

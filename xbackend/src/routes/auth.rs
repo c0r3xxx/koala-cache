@@ -41,19 +41,10 @@ pub async fn login(
                 &EncodingKey::from_secret(secret.as_bytes()),
             ) {
                 Ok(token) => Ok(Json(LoginResponse { token })),
-                Err(_) => {
-                    tracing::error!("Failed to encode JWT token");
-                    Err(StatusCode::INTERNAL_SERVER_ERROR)
-                }
+                Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
             }
         }
-        Err(UserError::InvalidCredentials) => {
-            tracing::warn!("Login failed - invalid credentials");
-            Err(StatusCode::UNAUTHORIZED)
-        }
-        Err(e) => {
-            tracing::error!("Login failed with error: {:?}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
-        }
+        Err(UserError::InvalidCredentials) => Err(StatusCode::UNAUTHORIZED),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
 }

@@ -4,14 +4,17 @@ use argon2::{
     password_hash::{SaltString, rand_core::OsRng},
 };
 use sqlx::PgPool;
-use std::time::Instant;
 
 #[derive(Debug)]
 pub enum UserError {
+    #[allow(dead_code)]
     UsernameExists,
     InvalidCredentials,
+    #[allow(dead_code)]
     DatabaseError(sqlx::Error),
+    #[allow(dead_code)]
     HashError(argon2::password_hash::Error),
+    #[allow(dead_code)]
     ParamError(String),
 }
 
@@ -28,12 +31,9 @@ impl From<argon2::password_hash::Error> for UserError {
 }
 
 /// Create a new user with a hashed password
+#[allow(dead_code)]
 pub async fn create_user(pool: &PgPool, credentials: &UserCredentials) -> Result<User, UserError> {
-    let start = Instant::now();
-    tracing::info!("Creating user: {}", credentials.username);
-
     // Hash the password using Argon2id with custom parameters
-    let hash_start = Instant::now();
     let salt = SaltString::generate(&mut OsRng);
 
     let params =
@@ -49,11 +49,7 @@ pub async fn create_user(pool: &PgPool, credentials: &UserCredentials) -> Result
         .hash_password(credentials.password.as_bytes(), &salt)?
         .to_string();
 
-    let hash_duration = hash_start.elapsed();
-    tracing::debug!("Password hashing took: {:?}", hash_duration);
-
-    // Insert user into database and return the created user
-    let db_start = Instant::now();
+    // Insert user into database and return the created use
     let result = sqlx::query_as::<_, User>(
         "INSERT INTO users (username, password) VALUES ($1, $2) RETURNING username, password, created_at"
     )
@@ -62,36 +58,12 @@ pub async fn create_user(pool: &PgPool, credentials: &UserCredentials) -> Result
     .fetch_one(pool)
     .await;
 
-    let db_duration = db_start.elapsed();
-    tracing::debug!("Database insert took: {:?}", db_duration);
-
-    let total_duration = start.elapsed();
-
     match result {
-        Ok(user) => {
-            tracing::info!(
-                "User created successfully: {} (total time: {:?})",
-                credentials.username,
-                total_duration
-            );
-            Ok(user)
-        }
+        Ok(user) => Ok(user),
         Err(sqlx::Error::Database(db_err)) if db_err.is_unique_violation() => {
-            tracing::warn!(
-                "User creation failed - username already exists: {} (total time: {:?})",
-                credentials.username,
-                total_duration
-            );
             Err(UserError::UsernameExists)
         }
-        Err(e) => {
-            tracing::error!(
-                "User creation failed with database error: {} (total time: {:?})",
-                e,
-                total_duration
-            );
-            Err(UserError::DatabaseError(e))
-        }
+        Err(e) => Err(UserError::DatabaseError(e)),
     }
 }
 
@@ -100,24 +72,16 @@ pub async fn validate_user(
     pool: &PgPool,
     credentials: &UserCredentials,
 ) -> Result<User, UserError> {
-    let start = Instant::now();
-    tracing::info!("Validating user: {}", credentials.username);
-
     // Retrieve the user from database
-    let db_start = Instant::now();
     let user: Option<User> =
         sqlx::query_as("SELECT username, password, created_at FROM users WHERE username = $1")
             .bind(&credentials.username)
             .fetch_optional(pool)
             .await?;
 
-    let db_duration = db_start.elapsed();
-    tracing::debug!("Database query took: {:?}", db_duration);
-
     match user {
         Some(user) => {
             // Verify the password against the Argon2id hash
-            let verify_start = Instant::now();
             let parsed_hash = PasswordHash::new(&user.password)?;
 
             // Configure Argon2 with the same parameters for verification
@@ -127,38 +91,12 @@ pub async fn validate_user(
             let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
 
             let result = argon2.verify_password(credentials.password.as_bytes(), &parsed_hash);
-            let verify_duration = verify_start.elapsed();
-            tracing::debug!("Password verification took: {:?}", verify_duration);
-
-            let total_duration = start.elapsed();
 
             match result {
-                Ok(_) => {
-                    tracing::info!(
-                        "User validation successful: {} (total time: {:?})",
-                        credentials.username,
-                        total_duration
-                    );
-                    Ok(user)
-                }
-                Err(_) => {
-                    tracing::warn!(
-                        "User validation failed - invalid password: {} (total time: {:?})",
-                        credentials.username,
-                        total_duration
-                    );
-                    Err(UserError::InvalidCredentials)
-                }
+                Ok(_) => Ok(user),
+                Err(_) => Err(UserError::InvalidCredentials),
             }
         }
-        None => {
-            let total_duration = start.elapsed();
-            tracing::warn!(
-                "User validation failed - user not found: {} (total time: {:?})",
-                credentials.username,
-                total_duration
-            );
-            Err(UserError::InvalidCredentials)
-        }
+        None => Err(UserError::InvalidCredentials),
     }
 }
