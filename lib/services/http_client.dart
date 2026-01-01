@@ -168,7 +168,7 @@ class HttpClient {
   }
 
   /// Upload an image file to the server with authentication
-  static Future<String?> uploadImage(
+  static Future<Map<String, dynamic>?> uploadImage(
     String serverUrl,
     String base64Content,
     String fileName,
@@ -195,12 +195,12 @@ class HttpClient {
       );
     }
 
-    // Parse response to get the hash
+    // Parse response to get the hash and metadata
     try {
       final responseData = jsonDecode(response.body) as Map<String, dynamic>;
-      return responseData['hash'] as String?;
+      return responseData;
     } catch (e) {
-      print('Warning: Could not parse hash from response: $e');
+      print('Warning: Could not parse response: $e');
       return null;
     }
   }

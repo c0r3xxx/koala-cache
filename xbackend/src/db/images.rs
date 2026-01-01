@@ -40,3 +40,40 @@ pub async fn get_image_hashes_by_owner(
 
     Ok(records.into_iter().map(|r| r.hash).collect())
 }
+
+pub async fn get_image_by_hash(
+    pool: &PgPool,
+    hash: &str,
+    owner: &str,
+) -> Result<Option<Image>, sqlx::Error> {
+    let record = sqlx::query!(
+        r#"
+        SELECT hash, extension, owner, image_name, longitude, latitude, created_at, modified_at
+        FROM images
+        WHERE hash = $1 AND owner = $2
+        "#,
+        hash,
+        owner
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(record.map(|r| Image {
+        hash: r.hash,
+        extension: r.extension.unwrap_or_else(|| "jpg".to_string()),
+        owner: r.owner.unwrap_or_default(),
+        image_name: r.image_name,
+        longitude: r.longitude,
+        latitude: r.latitude,
+        created_at: chrono::DateTime::from_naive_utc_and_offset(
+            r.created_at
+                .unwrap_or_else(|| chrono::Utc::now().naive_utc()),
+            chrono::Utc,
+        ),
+        modified_at: chrono::DateTime::from_naive_utc_and_offset(
+            r.modified_at
+                .unwrap_or_else(|| chrono::Utc::now().naive_utc()),
+            chrono::Utc,
+        ),
+    }))
+}

@@ -18,6 +18,8 @@ samples, guidance on mobile development, and a full API reference.
 ## Dev device
 
 ```
+use Widget Composition Pattern
+
 flutter pub upgrade --major-versions
 flutter pub outdated
 

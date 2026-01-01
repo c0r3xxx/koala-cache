@@ -7,6 +7,7 @@ class DataStore {
   static const String _serverPortKey = 'server_port';
   static const String _useHttpsKey = 'use_https';
   static const String _imageHashMappingPrefix = 'image_hash_';
+  static const String _imageMetadataPrefix = 'image_metadata_';
   static const String _allImageHashesKey = 'all_image_hashes';
 
   static DataStore? _instance;
@@ -129,6 +130,39 @@ class DataStore {
     }
 
     return mappings;
+  }
+
+  /// Save image metadata as JSON for a given hash
+  Future<bool> saveImageMetadata(String hash, String metadataJson) async {
+    return await _prefs.setString('$_imageMetadataPrefix$hash', metadataJson);
+  }
+
+  /// Get image metadata JSON for a given hash
+  Future<String?> getImageMetadata(String hash) async {
+    return _prefs.getString('$_imageMetadataPrefix$hash');
+  }
+
+  /// Remove image metadata for a given hash
+  Future<bool> removeImageMetadata(String hash) async {
+    return await _prefs.remove('$_imageMetadataPrefix$hash');
+  }
+
+  /// Get all image metadata mappings
+  Future<Map<String, String>> getAllImageMetadata() async {
+    final Map<String, String> metadata = {};
+    final keys = _prefs.getKeys();
+
+    for (final key in keys) {
+      if (key.startsWith(_imageMetadataPrefix)) {
+        final hash = key.substring(_imageMetadataPrefix.length);
+        final metadataJson = _prefs.getString(key);
+        if (metadataJson != null) {
+          metadata[hash] = metadataJson;
+        }
+      }
+    }
+
+    return metadata;
   }
 
   /// Save all image hashes from server

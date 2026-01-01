@@ -105,8 +105,8 @@ class SyncFiles {
     final createdAt = stat.changed;
     final modifiedAt = stat.modified;
 
-    // Use authenticated upload from HttpClient and return the hash
-    return await HttpClient.uploadImage(
+    // Use authenticated upload from HttpClient and get the response with metadata
+    final response = await HttpClient.uploadImage(
       serverUrl,
       base64Image,
       fileName,
@@ -114,5 +114,25 @@ class SyncFiles {
       createdAt,
       modifiedAt,
     );
+
+    if (response != null) {
+      final hash = response['hash'] as String?;
+
+      if (hash != null) {
+        // Get DataStore instance
+        final dataStore = await DataStore.getInstance();
+
+        // Store the hash to image path mapping
+        await dataStore.saveImageHashMapping(hash, imageFile.path);
+
+        // Store the metadata as JSON
+        final metadataJson = jsonEncode(response);
+        await dataStore.saveImageMetadata(hash, metadataJson);
+
+        return hash;
+      }
+    }
+
+    return null;
   }
 }

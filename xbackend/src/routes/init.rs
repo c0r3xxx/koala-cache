@@ -1,7 +1,8 @@
 use axum::{Router, extract::DefaultBodyLimit, middleware, routing::get, routing::post};
 
 use crate::routes::{
-    auth::login, auth_middleware, get_user_image_hashes, health::health, image::upload_image,
+    auth::login, auth_middleware, get_image, get_user_image_hashes, health::health,
+    image::upload_image,
 };
 
 pub async fn init(pool: sqlx::PgPool) {
@@ -14,6 +15,7 @@ pub async fn init(pool: sqlx::PgPool) {
             Router::new()
                 .route("/img", post(upload_image))
                 .route("/img/hashes", get(get_user_image_hashes))
+                .route("/img/{hash}", get(get_image))
                 .route("/health-auth", get(health))
                 .layer(middleware::from_fn(auth_middleware)),
         )
