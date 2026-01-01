@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../../services/data_store.dart';
 import '../../services/http_client.dart';
 import '../../services/image_cache_service.dart';
+import '../../services/permissions_service.dart';
 import '../widgets/snackbar.dart';
 import 'widgets/images_app_bar.dart';
 import 'widgets/error_view.dart';
@@ -34,7 +35,21 @@ class _ImagesScreenState extends State<ImagesScreen> {
   @override
   void initState() {
     super.initState();
-    _loadImages();
+    _requestPermissionsAndLoadImages();
+  }
+
+  Future<void> _requestPermissionsAndLoadImages() async {
+    final hasPermission = await PermissionsService.requestStoragePermission(
+      context,
+    );
+    if (hasPermission) {
+      _loadImages();
+    } else {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Storage permission is required to load images.';
+      });
+    }
   }
 
   Future<void> _loadImages() async {

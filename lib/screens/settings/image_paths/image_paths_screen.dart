@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 import '../../../services/data_store.dart';
+import '../../../services/permissions_service.dart';
 import '../../../config/consts.dart';
 import '../../widgets/snackbar.dart';
 
@@ -89,18 +89,8 @@ class _ImagePathsScreenState extends State<ImagePathsScreen> {
   }
 
   Future<bool> _requestPermissions() async {
-    final status = await Permission.photos.request();
-
-    if (!status.isGranted && mounted) {
-      AppSnackBar.showInfo(
-        context,
-        'Media access permission is required to scan image directories',
-        action: SnackBarAction(label: 'Settings', onPressed: openAppSettings),
-      );
-      return false;
-    }
-
-    return status.isGranted;
+    if (!mounted) return false;
+    return await PermissionsService.requestStoragePermission(context);
   }
 
   Future<List<Directory>> _getSearchDirectories() async {
