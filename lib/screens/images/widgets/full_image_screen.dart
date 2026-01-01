@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'package:share_plus/share_plus.dart';
+import '../../../services/data_store.dart';
+import 'image_info_dialog.dart';
+import 'delete_confirmation_dialog.dart';
+import 'zoomable_image_viewer.dart';
 
 class FullImageScreen extends StatefulWidget {
   final List<String?> imagePaths;
@@ -19,15 +24,15 @@ class FullImageScreen extends StatefulWidget {
 
 class _FullImageScreenState extends State<FullImageScreen> {
   late PageController _pageController;
-  late int _currentIndex;
   final Map<int, TransformationController> _transformControllers = {};
   bool _isZoomed = false;
+  int _currentIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _currentIndex = widget.initialIndex;
     _pageController = PageController(initialPage: widget.initialIndex);
+    _currentIndex = widget.initialIndex;
   }
 
   @override
@@ -53,39 +58,77 @@ class _FullImageScreenState extends State<FullImageScreen> {
     return _transformControllers[index]!;
   }
 
-  void _handleDoubleTap(int index, TapDownDetails details) {
-    final controller = _getTransformController(index);
-    final scale = controller.value.getMaxScaleOnAxis();
-
-    if (scale > 1.0) {
-      // Zoom out
-      controller.value = Matrix4.identity();
-    } else {
-      // Zoom in to 2x centered on tap position
-      final position = details.localPosition;
-      const zoomScale = 2.0;
-
-      // Calculate the transformation to zoom in centered on the tap position
-      final matrix = Matrix4.identity()
-        ..translateByDouble(
-          -position.dx * (zoomScale - 1),
-          -position.dy * (zoomScale - 1),
-          1.0,
-          1.0,
-        )
-        ..scaleByDouble(zoomScale, zoomScale, 1.0, 1.0);
-
-      controller.value = matrix;
+  Future<void> _shareImage() async {
+    final imagePath = widget.imagePaths[_currentIndex];
+    if (imagePath == null) {
+      _showSnackBar('Image not downloaded yet');
+      return;
     }
+
+    try {
+      await Share.shareXFiles([
+        XFile(imagePath),
+      ], text: 'Shared from Koala Cache');
+    } catch (e) {
+      if (mounted) _showSnackBar('Failed to share image: $e');
+    }
+  }
+
+  Future<void> _deleteImage() async {
+    final imagePath = widget.imagePaths[_currentIndex];
+    final hash = widget.hashes[_currentIndex];
+
+    if (imagePath == null) {
+      _showSnackBar('Image not downloaded yet');
+      return;
+    }
+
+    final confirmed = await showDeleteConfirmationDialog(context);
+    if (confirmed != true) return;
+
+    try {
+      final file = File(imagePath);
+      if (await file.exists()) await file.delete();
+
+      final dataStore = await DataStore.getInstance();
+      await dataStore.removeImageHashMapping(hash);
+
+      if (mounted) {
+        _showSnackBar('Image deleted successfully');
+        Navigator.of(context).pop(true);
+      }
+    } catch (e) {
+      if (mounted) _showSnackBar('Failed to delete image: $e');
+    }
+  }
+
+  void _addToAlbum() {
+    _showSnackBar('Add to album feature coming soon!');
+  }
+
+  Future<void> _showImageInfo() async {
+    await showImageInfoDialog(
+      context,
+      hash: widget.hashes[_currentIndex],
+      imagePath: widget.imagePaths[_currentIndex],
+    );
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        iconTheme: const IconThemeData(color: Colors.white),
+      appBar: _FullImageAppBar(
+        onDelete: _deleteImage,
+        onAddToAlbum: _addToAlbum,
+        onShowInfo: _showImageInfo,
+        onShare: _shareImage,
       ),
       body: PageView.builder(
         controller: _pageController,
@@ -93,43 +136,61 @@ class _FullImageScreenState extends State<FullImageScreen> {
         physics: _isZoomed
             ? const NeverScrollableScrollPhysics()
             : const PageScrollPhysics(),
-        onPageChanged: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
+        onPageChanged: (index) => setState(() => _currentIndex = index),
         itemBuilder: (context, index) {
-          final imagePath = widget.imagePaths[index];
-
-          if (imagePath == null) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const CircularProgressIndicator(color: Colors.white),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Image not downloaded yet',
-                    style: const TextStyle(color: Colors.white70),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return Center(
-            child: GestureDetector(
-              onDoubleTapDown: (details) => _handleDoubleTap(index, details),
-              child: InteractiveViewer(
-                transformationController: _getTransformController(index),
-                child: SizedBox.expand(
-                  child: Image.file(File(imagePath), fit: BoxFit.contain),
-                ),
-              ),
-            ),
+          return ZoomableImageViewer(
+            imagePath: widget.imagePaths[index],
+            transformController: _getTransformController(index),
           );
         },
       ),
+    );
+  }
+}
+
+class _FullImageAppBar extends StatelessWidget implements PreferredSizeWidget {
+  final VoidCallback onDelete;
+  final VoidCallback onAddToAlbum;
+  final VoidCallback onShowInfo;
+  final VoidCallback onShare;
+
+  const _FullImageAppBar({
+    required this.onDelete,
+    required this.onAddToAlbum,
+    required this.onShowInfo,
+    required this.onShare,
+  });
+
+  @override
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+
+  @override
+  Widget build(BuildContext context) {
+    return AppBar(
+      backgroundColor: Colors.black,
+      iconTheme: const IconThemeData(color: Colors.white),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.delete),
+          onPressed: onDelete,
+          tooltip: 'Delete',
+        ),
+        IconButton(
+          icon: const Icon(Icons.album),
+          onPressed: onAddToAlbum,
+          tooltip: 'Add to Album',
+        ),
+        IconButton(
+          icon: const Icon(Icons.info_outline),
+          onPressed: onShowInfo,
+          tooltip: 'Info',
+        ),
+        IconButton(
+          icon: const Icon(Icons.share),
+          onPressed: onShare,
+          tooltip: 'Share',
+        ),
+      ],
     );
   }
 }
