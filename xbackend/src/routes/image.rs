@@ -1,4 +1,4 @@
-use crate::db::{get_image_by_hash, get_image_hashes_by_owner, insert_image};
+use crate::db::{delete_image, get_image_by_hash, get_image_hashes_by_owner, insert_image};
 use crate::img::{compute_hash, extract_gps_numeric};
 use crate::routes::auth::Claims;
 use crate::types::Image;
@@ -168,5 +168,61 @@ pub async fn get_image(
         created_at: image.created_at,
         modified_at: image.modified_at,
         content: content_base64,
+    }))
+}
+
+#[derive(Serialize)]
+pub struct DeleteImageResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+pub async fn delete_image_endpoint(
+    State(pool): State<PgPool>,
+    Extension(claims): Extension<Claims>,
+    Path(hash): Path<String>,
+) -> Result<Json<DeleteImageResponse>, StatusCode> {
+    // First check if the image exists and belongs to the user
+    let image = get_image_by_hash(&pool, &hash, &claims.sub)
+        .await
+        .map_err(|e| {
+            eprintln!("Database error: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    if image.is_none() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let image = image.unwrap();
+
+    // Delete from database
+    let deleted = delete_image(&pool, &hash, &claims.sub).await.map_err(|e| {
+        eprintln!("Database error: {:?}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    if !deleted {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    // Delete physical file
+    let storage_path =
+        env::var("IMAGE_STORAGE_PATH").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let file_name = format!("{}.{}", image.hash, image.extension);
+    let file_path = PathBuf::from(&storage_path).join(&file_name);
+
+    // Attempt to delete the file, but don't fail if it doesn't exist
+    if let Err(e) = tokio::fs::remove_file(&file_path).await {
+        eprintln!(
+            "Warning: Could not delete file {}: {:?}",
+            file_path.display(),
+            e
+        );
+    }
+
+    Ok(Json(DeleteImageResponse {
+        success: true,
+        message: format!("Image {} deleted successfully", hash),
     }))
 }

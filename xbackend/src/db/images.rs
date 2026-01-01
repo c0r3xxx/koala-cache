@@ -77,3 +77,18 @@ pub async fn get_image_by_hash(
         ),
     }))
 }
+
+pub async fn delete_image(pool: &PgPool, hash: &str, owner: &str) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query!(
+        r#"
+        DELETE FROM images
+        WHERE hash = $1 AND owner = $2
+        "#,
+        hash,
+        owner
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
+}
