@@ -25,5 +25,5 @@ dart run flutter_launcher_icons
 dart run flutter_native_splash:create
 
 adb pair 192.168.178.33:42313
-flutter run -d "adb-2A141FDH300LG6-HLNb83._adb-tls-connect._tcp"
+flutter run -d "adb-2A141FDH300LG6-HLNb83._adb-tls-connect._tcp" --verbose
 ```

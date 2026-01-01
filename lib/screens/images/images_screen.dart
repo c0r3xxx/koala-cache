@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'dart:convert';
 import '../../services/data_store.dart';
 import '../../services/sync_files.dart';
+import '../../services/http_client.dart';
 
 class ImagesScreen extends StatefulWidget {
   const ImagesScreen({super.key});
@@ -13,17 +15,7 @@ class ImagesScreen extends StatefulWidget {
 class _ImagesScreenState extends State<ImagesScreen> {
   List<String> _imagePaths = [];
   bool _isLoading = true;
-
-  static const List<String> _imageExtensions = [
-    'jpg',
-    'jpeg',
-    'png',
-    'gif',
-    'bmp',
-    'webp',
-    'heic',
-    'heif',
-  ];
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -32,56 +24,50 @@ class _ImagesScreenState extends State<ImagesScreen> {
   }
 
   Future<void> _loadImages() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     try {
       final dataStore = await DataStore.getInstance();
-      final directoryPaths = await dataStore.getSelectedImagePaths();
+      final serverUrl = await dataStore.getServerUrl();
+      final url = '$serverUrl/img/hashes';
 
-      // Scan all selected directories for image files
-      final allImagePaths = <String>[];
-      for (final dirPath in directoryPaths) {
-        final images = await _scanDirectoryForImages(dirPath);
-        allImagePaths.addAll(images);
+      // Make HTTP request to get image hashes
+      final response = await HttpClient.authenticatedGet(url);
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> jsonResponse = jsonDecode(response.body);
+        final List<dynamic> hashes = jsonResponse['hashes'] ?? [];
+
+        // Resolve hashes to image paths through datastore
+        final imagePaths = <String>[];
+        for (final hash in hashes) {
+          final hashStr = hash.toString();
+          final imagePath = await dataStore.getImagePathForHash(hashStr);
+          if (imagePath != null && await File(imagePath).exists()) {
+            imagePaths.add(imagePath);
+          } else {
+            print('Image not found for hash: $hashStr');
+          }
+        }
+
+        setState(() {
+          _imagePaths = imagePaths;
+          _isLoading = false;
+        });
+      } else {
+        throw Exception('Failed to load images: ${response.statusCode}');
       }
-
-      setState(() {
-        _imagePaths = allImagePaths;
-        _isLoading = false;
-      });
     } catch (e) {
       print('Error loading images: $e');
       setState(() {
         _imagePaths = [];
         _isLoading = false;
+        _errorMessage = 'Failed to load images: ${e.toString()}';
       });
     }
-  }
-
-  Future<List<String>> _scanDirectoryForImages(String dirPath) async {
-    final imagePaths = <String>[];
-
-    try {
-      final dir = Directory(dirPath);
-      if (!await dir.exists()) {
-        print('Directory does not exist: $dirPath');
-        return imagePaths;
-      }
-
-      final entities = await dir.list().toList();
-
-      for (final entity in entities) {
-        if (entity is File) {
-          final extension = entity.path.split('.').last.toLowerCase();
-          if (_imageExtensions.contains(extension)) {
-            imagePaths.add(entity.path);
-          }
-        }
-      }
-    } catch (e) {
-      print('Error scanning directory $dirPath: $e');
-    }
-
-    return imagePaths;
   }
 
   @override
@@ -117,6 +103,26 @@ class _ImagesScreenState extends State<ImagesScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
+          : _errorMessage != null
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text(
+                    _errorMessage!,
+                    style: const TextStyle(fontSize: 16, color: Colors.red),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _loadImages,
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            )
           : _imagePaths.isEmpty
           ? Center(
               child: Column(
@@ -134,7 +140,7 @@ class _ImagesScreenState extends State<ImagesScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Add image directories in Settings',
+                    'Upload images to see them here',
                     style: TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                 ],

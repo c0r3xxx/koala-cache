@@ -61,6 +61,11 @@ class HttpClient {
     return await http.Response.fromStream(streamedResponse);
   }
 
+  /// Make an authenticated GET request
+  static Future<http.Response> authenticatedGet(String url) async {
+    return await _authenticatedRequest('GET', url);
+  }
+
   /// Test connection to the server
   static Future<ConnectionTestResult> testConnection() async {
     final dataStore = await DataStore.getInstance();
