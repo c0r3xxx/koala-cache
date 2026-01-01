@@ -4,6 +4,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../services/data_store.dart';
 import '../../../config/consts.dart';
+import '../../widgets/snackbar.dart';
 
 /// Screen for managing image import paths
 class ImagePathsScreen extends StatefulWidget {
@@ -91,13 +92,10 @@ class _ImagePathsScreenState extends State<ImagePathsScreen> {
     final status = await Permission.photos.request();
 
     if (!status.isGranted && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(
-            'Media access permission is required to scan image directories',
-          ),
-          action: SnackBarAction(label: 'Settings', onPressed: openAppSettings),
-        ),
+      AppSnackBar.showInfo(
+        context,
+        'Media access permission is required to scan image directories',
+        action: SnackBarAction(label: 'Settings', onPressed: openAppSettings),
       );
       return false;
     }
@@ -200,9 +198,7 @@ class _ImagePathsScreenState extends State<ImagePathsScreen> {
 
   void _showError(String message) {
     if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      AppSnackBar.showError(context, message);
     }
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../services/data_store.dart';
 import '../../../services/secure_data_store.dart';
 import '../../../services/http_client.dart';
+import '../../widgets/snackbar.dart';
 
 /// Screen for configuring the Koala Cache server address
 class ServerAddressScreen extends StatefulWidget {
@@ -112,7 +113,10 @@ class _ServerAddressScreenState extends State<ServerAddressScreen> {
     final port = int.tryParse(portText);
 
     if (address.isEmpty || port == null) {
-      _showError('Please enter a valid server address and port');
+      AppSnackBar.showError(
+        context,
+        'Please enter a valid server address and port',
+      );
       return;
     }
 
@@ -129,22 +133,18 @@ class _ServerAddressScreenState extends State<ServerAddressScreen> {
 
     if (mounted) {
       Navigator.of(context).pop(); // Close loading dialog
-      ScaffoldMessenger.of(context).clearSnackBars();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result.message),
-          backgroundColor: result.success ? Colors.green : Colors.red,
-        ),
-      );
+
+      if (result.success) {
+        AppSnackBar.showSuccess(context, result.message);
+      } else {
+        AppSnackBar.showError(context, result.message);
+      }
     }
   }
 
   void _showError(String message) {
     if (mounted) {
-      ScaffoldMessenger.of(context).clearSnackBars();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), backgroundColor: Colors.red),
-      );
+      AppSnackBar.showError(context, message);
     }
   }
 

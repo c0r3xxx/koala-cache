@@ -4,6 +4,7 @@ import 'dart:convert';
 import '../../services/data_store.dart';
 import '../../services/sync_files.dart';
 import '../../services/http_client.dart';
+import '../widgets/snackbar.dart';
 
 class ImagesScreen extends StatefulWidget {
   const ImagesScreen({super.key});
@@ -31,6 +32,44 @@ class _ImagesScreenState extends State<ImagesScreen> {
 
     try {
       final dataStore = await DataStore.getInstance();
+
+      // First, load cached hashes from data store for immediate display
+      final cachedHashes = await dataStore.getAllImageHashes();
+      if (cachedHashes.isNotEmpty) {
+        final cachedImagePaths = <String>[];
+        for (final hash in cachedHashes) {
+          final imagePath = await dataStore.getImagePathForHash(hash);
+          if (imagePath != null && await File(imagePath).exists()) {
+            cachedImagePaths.add(imagePath);
+          }
+        }
+
+        // Show cached images immediately
+        setState(() {
+          _imagePaths = cachedImagePaths;
+          _isLoading = false;
+        });
+      } else {
+        // No cached data, keep loading state
+        setState(() {
+          _isLoading = false;
+        });
+      }
+
+      // Then refresh from server in the background
+      await _refreshFromServer();
+    } catch (e) {
+      print('Error loading images: $e');
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Failed to load images: ${e.toString()}';
+      });
+    }
+  }
+
+  Future<void> _refreshFromServer() async {
+    try {
+      final dataStore = await DataStore.getInstance();
       final serverUrl = await dataStore.getServerUrl();
       final url = '$serverUrl/img/hashes';
 
@@ -40,6 +79,10 @@ class _ImagesScreenState extends State<ImagesScreen> {
       if (response.statusCode == 200) {
         final Map<String, dynamic> jsonResponse = jsonDecode(response.body);
         final List<dynamic> hashes = jsonResponse['hashes'] ?? [];
+
+        // Store all hashes in data store
+        final hashStrings = hashes.map((h) => h.toString()).toList();
+        await dataStore.saveAllImageHashes(hashStrings);
 
         // Resolve hashes to image paths through datastore
         final imagePaths = <String>[];
@@ -55,18 +98,28 @@ class _ImagesScreenState extends State<ImagesScreen> {
 
         setState(() {
           _imagePaths = imagePaths;
-          _isLoading = false;
+          _errorMessage = null;
         });
       } else {
         throw Exception('Failed to load images: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error loading images: $e');
-      setState(() {
-        _imagePaths = [];
-        _isLoading = false;
-        _errorMessage = 'Failed to load images: ${e.toString()}';
-      });
+      print('Error refreshing from server: $e');
+      // Don't show error if we already have cached images displayed
+      if (_imagePaths.isEmpty) {
+        setState(() {
+          _errorMessage = 'Failed to load images: ${e.toString()}';
+        });
+      } else {
+        // Show snack bar hint that we're showing cached images
+        if (mounted) {
+          AppSnackBar.showInfo(
+            context,
+            'Showing cached images. Unable to refresh from server.',
+            action: SnackBarAction(label: 'Retry', onPressed: _loadImages),
+          );
+        }
+      }
     }
   }
 

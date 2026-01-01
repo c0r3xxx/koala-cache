@@ -60,6 +60,7 @@ class _MyHomePageState extends State<MyHomePage> {
         height: 60,
         selectedIndex: _selectedIndex,
         onDestinationSelected: (int index) {
+          ScaffoldMessenger.of(context).clearSnackBars();
           setState(() {
             _selectedIndex = index;
           });

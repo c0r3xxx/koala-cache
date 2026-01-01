@@ -61,22 +61,23 @@ pub async fn upload_image(
     };
 
     // Insert into database
-    insert_image(&pool, &image)
-        .await
-        .map_err(|e: sqlx::Error| {
+    let result = insert_image(&pool, &image).await;
+
+    match result {
+        Ok(_) => Ok((StatusCode::CREATED, Json(UploadImageResponse { hash }))),
+        Err(e) => {
             // Check for duplicate key constraint violation
             if let sqlx::Error::Database(db_err) = &e {
                 if db_err.code().as_deref() == Some("23505") {
-                    return StatusCode::CONFLICT;
+                    // Return conflict status but still include the hash
+                    return Ok((StatusCode::CONFLICT, Json(UploadImageResponse { hash })));
                 }
             }
 
             eprintln!("Database error: {:?}", e);
-
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    Ok((StatusCode::CREATED, Json(UploadImageResponse { hash })))
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 #[derive(Serialize)]

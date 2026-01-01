@@ -7,6 +7,7 @@ class DataStore {
   static const String _serverPortKey = 'server_port';
   static const String _useHttpsKey = 'use_https';
   static const String _imageHashMappingPrefix = 'image_hash_';
+  static const String _allImageHashesKey = 'all_image_hashes';
 
   static DataStore? _instance;
   final SharedPreferences _prefs;
@@ -128,5 +129,20 @@ class DataStore {
     }
 
     return mappings;
+  }
+
+  /// Save all image hashes from server
+  Future<bool> saveAllImageHashes(List<String> hashes) async {
+    return await _prefs.setStringList(_allImageHashesKey, hashes);
+  }
+
+  /// Get all stored image hashes
+  Future<List<String>> getAllImageHashes() async {
+    return _prefs.getStringList(_allImageHashesKey) ?? [];
+  }
+
+  /// Clear all stored image hashes
+  Future<bool> clearAllImageHashes() async {
+    return await _prefs.remove(_allImageHashesKey);
   }
 }
