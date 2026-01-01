@@ -229,10 +229,23 @@ class _ImagesScreenState extends State<ImagesScreen> {
   }
 
   void _showFullImage(BuildContext context, String path, String hash) {
+    // Get all image paths and hashes (including null paths for not-yet-downloaded images)
+    final allPaths = _imageItems.map((item) => item.path).toList();
+    final allHashes = _imageItems.map((item) => item.hash).toList();
+
+    // Find the index of the current image
+    final currentIndex = _imageItems.indexWhere((item) => item.hash == hash);
+
+    if (currentIndex == -1 || allPaths.isEmpty) return;
+
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => FullImageScreen(imagePath: path, hash: hash),
+        builder: (context) => FullImageScreen(
+          imagePaths: allPaths,
+          hashes: allHashes,
+          initialIndex: currentIndex,
+        ),
       ),
     );
   }
