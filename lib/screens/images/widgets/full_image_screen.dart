@@ -20,6 +20,8 @@ class FullImageScreen extends StatefulWidget {
 class _FullImageScreenState extends State<FullImageScreen> {
   late PageController _pageController;
   late int _currentIndex;
+  final Map<int, TransformationController> _transformControllers = {};
+  bool _isZoomed = false;
 
   @override
   void initState() {
@@ -31,7 +33,46 @@ class _FullImageScreenState extends State<FullImageScreen> {
   @override
   void dispose() {
     _pageController.dispose();
+    for (var controller in _transformControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
+  }
+
+  TransformationController _getTransformController(int index) {
+    if (!_transformControllers.containsKey(index)) {
+      final controller = TransformationController();
+      controller.addListener(() {
+        final scale = controller.value.getMaxScaleOnAxis();
+        setState(() {
+          _isZoomed = scale > 1.0;
+        });
+      });
+      _transformControllers[index] = controller;
+    }
+    return _transformControllers[index]!;
+  }
+
+  void _handleDoubleTap(int index, TapDownDetails details) {
+    final controller = _getTransformController(index);
+    final scale = controller.value.getMaxScaleOnAxis();
+
+    if (scale > 1.0) {
+      // Zoom out
+      controller.value = Matrix4.identity();
+    } else {
+      // Zoom in to 2x centered on tap position
+      final position = details.localPosition;
+      const zoomScale = 2.0;
+
+      // Calculate the transformation to zoom in centered on the tap position
+      final matrix = Matrix4.identity()
+        ..translate(position.dx, position.dy)
+        ..scale(zoomScale, zoomScale, 1.0)
+        ..translate(-position.dx, -position.dy);
+
+      controller.value = matrix;
+    }
   }
 
   @override
@@ -49,6 +90,9 @@ class _FullImageScreenState extends State<FullImageScreen> {
       body: PageView.builder(
         controller: _pageController,
         itemCount: widget.imagePaths.length,
+        physics: _isZoomed
+            ? const NeverScrollableScrollPhysics()
+            : const PageScrollPhysics(),
         onPageChanged: (index) {
           setState(() {
             _currentIndex = index;
@@ -58,7 +102,6 @@ class _FullImageScreenState extends State<FullImageScreen> {
           final imagePath = widget.imagePaths[index];
 
           if (imagePath == null) {
-            // Image not downloaded yet
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -75,9 +118,13 @@ class _FullImageScreenState extends State<FullImageScreen> {
           }
 
           return Center(
-            child: InteractiveViewer(
-              child: SizedBox.expand(
-                child: Image.file(File(imagePath), fit: BoxFit.contain),
+            child: GestureDetector(
+              onDoubleTapDown: (details) => _handleDoubleTap(index, details),
+              child: InteractiveViewer(
+                transformationController: _getTransformController(index),
+                child: SizedBox.expand(
+                  child: Image.file(File(imagePath), fit: BoxFit.contain),
+                ),
               ),
             ),
           );
