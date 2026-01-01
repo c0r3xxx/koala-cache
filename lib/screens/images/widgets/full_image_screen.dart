@@ -86,10 +86,6 @@ class _FullImageScreenState extends State<FullImageScreen> {
       appBar: AppBar(
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(color: Colors.white),
-        title: Text(
-          widget.hashes[_currentIndex],
-          style: const TextStyle(color: Colors.white, fontSize: 14),
-        ),
       ),
       body: PageView.builder(
         controller: _pageController,
