@@ -93,18 +93,16 @@ class _ImagesScreenState extends State<ImagesScreen> {
 
   Future<void> _refreshFromServer() async {
     try {
-      final dataStore = await DataStore.getInstance();
       final imageCacheService = await ImageCacheService.getInstance();
-      final serverUrl = await dataStore.getServerUrl();
-      final url = '$serverUrl/img/hashes';
 
-      final response = await HttpClient.authenticatedGet(url);
+      final response = await HttpClient.authenticatedGet('img/hashes');
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> jsonResponse = jsonDecode(response.body);
         final List<dynamic> hashes = jsonResponse['hashes'] ?? [];
 
         final hashStrings = hashes.map((h) => h.toString()).toList();
+        final dataStore = await DataStore.getInstance();
         await dataStore.saveAllImageHashes(hashStrings);
 
         final imageItems = <ImageItem>[];

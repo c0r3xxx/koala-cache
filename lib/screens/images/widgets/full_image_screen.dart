@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:share_plus/share_plus.dart';
 import '../../../services/data_store.dart';
+import '../../../services/http_client.dart';
 import 'image_info_dialog.dart';
 import 'delete_confirmation_dialog.dart';
 import 'zoomable_image_viewer.dart';
@@ -87,11 +88,27 @@ class _FullImageScreenState extends State<FullImageScreen> {
     if (confirmed != true) return;
 
     try {
+      // Delete from local storage
       final file = File(imagePath);
       if (await file.exists()) await file.delete();
 
       final dataStore = await DataStore.getInstance();
       await dataStore.removeImageHashMapping(hash);
+      await dataStore.removeImageMetadata(hash);
+
+      // Delete from server
+      try {
+        final response = await HttpClient.authenticatedDelete('img/$hash');
+
+        if (response.statusCode != 200) {
+          print(
+            'Warning: Server deletion returned status ${response.statusCode}',
+          );
+        }
+      } catch (e) {
+        print('Warning: Failed to delete from server: $e');
+        // Continue even if server deletion fails
+      }
 
       if (mounted) {
         _showSnackBar('Image deleted successfully');

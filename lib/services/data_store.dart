@@ -96,7 +96,7 @@ class DataStore {
     final port = await getServerPort();
     final useHttps = await getUseHttps();
     final protocol = useHttps ? 'https' : 'http';
-    return '$protocol://$address:$port';
+    return '$protocol://$address:$port/';
   }
 
   /// Save image hash to path mapping

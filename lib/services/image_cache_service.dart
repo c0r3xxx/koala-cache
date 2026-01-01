@@ -122,11 +122,8 @@ class ImageCacheService {
   /// Download an image from the server
   Future<String?> downloadImage(String hash) async {
     try {
-      final serverUrl = await _dataStore.getServerUrl();
-      final url = '$serverUrl/img/$hash';
-
       // Make authenticated GET request to download image
-      final response = await HttpClient.authenticatedGet(url);
+      final response = await HttpClient.authenticatedGet('img/$hash');
 
       if (response.statusCode != 200) {
         print('Failed to download image $hash: ${response.statusCode}');

@@ -16,7 +16,7 @@ class HttpClient {
   /// Make an authenticated HTTP request with JWT bearer token
   static Future<http.Response> _authenticatedRequest(
     String method,
-    String url, {
+    String path, {
     Map<String, String>? headers,
     Object? body,
   }) async {
@@ -28,6 +28,11 @@ class HttpClient {
 
     final secureDataStore = await SecureDataStore.getInstance();
     final token = await secureDataStore.getToken();
+
+    // Get server URL from data store
+    final dataStore = await DataStore.getInstance();
+    final serverUrl = await dataStore.getServerUrl();
+    final url = '$serverUrl$path';
 
     // Create a prepared request
     final request = http.Request(method, Uri.parse(url));
@@ -61,17 +66,10 @@ class HttpClient {
     return await http.Response.fromStream(streamedResponse);
   }
 
-  /// Make an authenticated GET request
-  static Future<http.Response> authenticatedGet(String url) async {
-    return await _authenticatedRequest('GET', url);
-  }
-
   /// Test connection to the server
   static Future<ConnectionTestResult> testConnection() async {
     final dataStore = await DataStore.getInstance();
     final address = await dataStore.getServerAddress();
-    final port = await dataStore.getServerPort();
-    final useHttps = await dataStore.getUseHttps();
 
     if (address.isEmpty) {
       return ConnectionTestResult(
@@ -80,11 +78,8 @@ class HttpClient {
       );
     }
 
-    final protocol = useHttps ? 'https' : 'http';
-    final url = '$protocol://$address:$port/health-auth';
-
     try {
-      final response = await _authenticatedRequest('GET', url);
+      final response = await _authenticatedRequest('GET', '/health-auth');
 
       final success = response.statusCode == 200;
       final message = success
@@ -106,8 +101,6 @@ class HttpClient {
     final secureDataStore = await SecureDataStore.getInstance();
 
     final address = await dataStore.getServerAddress();
-    final port = await dataStore.getServerPort();
-    final useHttps = await dataStore.getUseHttps();
     final username = await secureDataStore.getUsername();
     final password = await secureDataStore.getPassword();
 
@@ -125,8 +118,8 @@ class HttpClient {
       );
     }
 
-    final protocol = useHttps ? 'https' : 'http';
-    final url = '$protocol://$address:$port/login';
+    final serverUrl = await dataStore.getServerUrl();
+    final url = '$serverUrl/login';
 
     try {
       final response = await http
@@ -167,17 +160,24 @@ class HttpClient {
     }
   }
 
+  // generic authnicated get
+  static Future<http.Response> authenticatedGet(String path) async {
+    return await _authenticatedRequest('GET', path);
+  }
+
+  // generic authnicated delete
+  static Future<http.Response> authenticatedDelete(String path) async {
+    return await _authenticatedRequest('DELETE', path);
+  }
+
   /// Upload an image file to the server with authentication
   static Future<Map<String, dynamic>?> uploadImage(
-    String serverUrl,
     String base64Content,
     String fileName,
     String extension,
     DateTime createdAt,
     DateTime modifiedAt,
   ) async {
-    final url = '$serverUrl/img';
-
     // Create JSON payload
     final payload = {
       'content': base64Content,
@@ -187,7 +187,7 @@ class HttpClient {
       'modified_at': modifiedAt.toUtc().toIso8601String(),
     };
 
-    final response = await _authenticatedRequest('POST', url, body: payload);
+    final response = await _authenticatedRequest('POST', '/img', body: payload);
 
     if (![200, 201, 409].contains(response.statusCode)) {
       throw Exception(

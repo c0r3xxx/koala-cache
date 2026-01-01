@@ -12,8 +12,6 @@ class SyncFiles {
       // Get DataStore instance
       final dataStore = await DataStore.getInstance();
 
-      // Get server URL and image paths
-      final serverUrl = await dataStore.getServerUrl();
       final imagePaths = await dataStore.getSelectedImagePaths();
 
       if (imagePaths.isEmpty) {
@@ -21,7 +19,7 @@ class SyncFiles {
         return;
       }
 
-      print('Uploading ${imagePaths.length} image(s) to $serverUrl...');
+      print('Uploading ${imagePaths.length} image(s)...');
 
       // Get all image files from the selected paths
       final imageFiles = await _getImageFiles(imagePaths);
@@ -39,7 +37,7 @@ class SyncFiles {
 
       for (final imageFile in imageFiles) {
         try {
-          final hash = await _uploadSingleImage(serverUrl, imageFile);
+          final hash = await _uploadSingleImage(imageFile);
           if (hash != null) {
             // Store the hash to image path mapping
             await dataStore.saveImageHashMapping(hash, imageFile.path);
@@ -87,10 +85,7 @@ class SyncFiles {
   }
 
   /// Upload a single image file to the server
-  static Future<String?> _uploadSingleImage(
-    String serverUrl,
-    File imageFile,
-  ) async {
+  static Future<String?> _uploadSingleImage(File imageFile) async {
     final fileName = path.basename(imageFile.path);
     final extension = path.extension(imageFile.path).toLowerCase();
 
@@ -107,7 +102,6 @@ class SyncFiles {
 
     // Use authenticated upload from HttpClient and get the response with metadata
     final response = await HttpClient.uploadImage(
-      serverUrl,
       base64Image,
       fileName,
       extension,
