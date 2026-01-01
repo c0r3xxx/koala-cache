@@ -10,6 +10,14 @@ import 'widgets/empty_images_view.dart';
 import 'widgets/image_grid.dart';
 import 'widgets/full_image_screen.dart';
 
+class ImageItem {
+  final String hash;
+  String? path;
+  bool isDownloading;
+
+  ImageItem({required this.hash, this.path, this.isDownloading = false});
+}
+
 class ImagesScreen extends StatefulWidget {
   const ImagesScreen({super.key});
 
@@ -18,7 +26,7 @@ class ImagesScreen extends StatefulWidget {
 }
 
 class _ImagesScreenState extends State<ImagesScreen> {
-  List<String> _imagePaths = [];
+  List<ImageItem> _imageItems = [];
   bool _isLoading = true;
   String? _errorMessage;
   int _downloadingCount = 0;
@@ -42,16 +50,14 @@ class _ImagesScreenState extends State<ImagesScreen> {
 
       final cachedHashes = await dataStore.getAllImageHashes();
       if (cachedHashes.isNotEmpty) {
-        final cachedImagePaths = <String>[];
+        final imageItems = <ImageItem>[];
         for (final hash in cachedHashes) {
           final imagePath = await imageCacheService.getImagePath(hash);
-          if (imagePath != null) {
-            cachedImagePaths.add(imagePath);
-          }
+          imageItems.add(ImageItem(hash: hash, path: imagePath));
         }
 
         setState(() {
-          _imagePaths = cachedImagePaths;
+          _imageItems = imageItems;
           _isLoading = false;
         });
       } else {
@@ -86,28 +92,28 @@ class _ImagesScreenState extends State<ImagesScreen> {
         final hashStrings = hashes.map((h) => h.toString()).toList();
         await dataStore.saveAllImageHashes(hashStrings);
 
-        final imagePaths = <String>[];
-        final missingHashes = <String>[];
+        final imageItems = <ImageItem>[];
+        final missingIndices = <int>[];
 
-        for (final hash in hashes) {
-          final hashStr = hash.toString();
+        for (int i = 0; i < hashes.length; i++) {
+          final hashStr = hashes[i].toString();
           final imagePath = await imageCacheService.getImagePath(hashStr);
 
-          if (imagePath != null) {
-            imagePaths.add(imagePath);
-          } else {
-            missingHashes.add(hashStr);
+          imageItems.add(ImageItem(hash: hashStr, path: imagePath));
+
+          if (imagePath == null) {
+            missingIndices.add(i);
           }
         }
 
         setState(() {
-          _imagePaths = imagePaths;
+          _imageItems = imageItems;
           _errorMessage = null;
         });
 
-        if (missingHashes.isNotEmpty) {
+        if (missingIndices.isNotEmpty) {
           setState(() {
-            _downloadingCount = missingHashes.length;
+            _downloadingCount = missingIndices.length;
           });
 
           if (mounted) {
@@ -117,14 +123,14 @@ class _ImagesScreenState extends State<ImagesScreen> {
             );
           }
 
-          await _downloadMissingImages(missingHashes, imageCacheService);
+          await _downloadMissingImages(missingIndices, imageCacheService);
         }
       } else {
         throw Exception('Failed to load images: ${response.statusCode}');
       }
     } catch (e) {
       print('Error refreshing from server: $e');
-      if (_imagePaths.isEmpty) {
+      if (_imageItems.isEmpty) {
         setState(() {
           _errorMessage = 'Failed to load images: ${e.toString()}';
         });
@@ -141,24 +147,38 @@ class _ImagesScreenState extends State<ImagesScreen> {
   }
 
   Future<void> _downloadMissingImages(
-    List<String> missingHashes,
+    List<int> missingIndices,
     ImageCacheService imageCacheService,
   ) async {
     int downloadedCount = 0;
 
-    for (final hash in missingHashes) {
+    for (final index in missingIndices) {
+      if (index >= _imageItems.length) continue;
+
+      final item = _imageItems[index];
+
+      setState(() {
+        item.isDownloading = true;
+      });
+
       try {
-        final path = await imageCacheService.downloadImage(hash);
+        final path = await imageCacheService.downloadImage(item.hash);
 
         if (path != null && mounted) {
           setState(() {
-            _imagePaths.add(path);
+            item.path = path;
+            item.isDownloading = false;
             downloadedCount++;
-            _downloadingCount = missingHashes.length - downloadedCount;
+            _downloadingCount = missingIndices.length - downloadedCount;
           });
         }
       } catch (e) {
-        print('Failed to download image $hash: $e');
+        print('Failed to download image ${item.hash}: $e');
+        if (mounted) {
+          setState(() {
+            item.isDownloading = false;
+          });
+        }
       }
     }
 
@@ -181,7 +201,7 @@ class _ImagesScreenState extends State<ImagesScreen> {
     return Scaffold(
       appBar: ImagesAppBar(
         onRefresh: _loadImages,
-        imageCount: _imagePaths.length,
+        imageCount: _imageItems.where((item) => item.path != null).length,
         downloadingCount: _downloadingCount,
       ),
       body: _buildBody(),
@@ -197,12 +217,12 @@ class _ImagesScreenState extends State<ImagesScreen> {
       return ErrorView(errorMessage: _errorMessage!, onRetry: _loadImages);
     }
 
-    if (_imagePaths.isEmpty) {
+    if (_imageItems.isEmpty) {
       return EmptyImagesView(downloadingCount: _downloadingCount);
     }
 
     return ImageGrid(
-      imagePaths: _imagePaths,
+      imageItems: _imageItems,
       onRefresh: _loadImages,
       onImageTap: _showFullImage,
     );
