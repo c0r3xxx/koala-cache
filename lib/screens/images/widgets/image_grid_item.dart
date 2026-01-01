@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import '../images_screen.dart';
 
-class ImageGridItem extends StatelessWidget {
+class ImageGridItem extends StatefulWidget {
   final ImageItem imageItem;
   final VoidCallback? onTap;
 
@@ -13,9 +13,50 @@ class ImageGridItem extends StatelessWidget {
   });
 
   @override
+  State<ImageGridItem> createState() => _ImageGridItemState();
+}
+
+class _ImageGridItemState extends State<ImageGridItem>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _pulseAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    );
+    _pulseAnimation = Tween<double>(begin: 0.3, end: 0.6).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+    if (widget.imageItem.isDownloading) {
+      _animationController.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(ImageGridItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.imageItem.isDownloading && !oldWidget.imageItem.isDownloading) {
+      _animationController.repeat(reverse: true);
+    } else if (!widget.imageItem.isDownloading &&
+        oldWidget.imageItem.isDownloading) {
+      _animationController.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: widget.onTap,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8.0),
         child: _buildContent(),
@@ -24,43 +65,46 @@ class ImageGridItem extends StatelessWidget {
   }
 
   Widget _buildContent() {
-    if (imageItem.path != null) {
+    if (widget.imageItem.path != null) {
       // Image is downloaded and available
       return Image.file(
-        File(imageItem.path!),
+        File(widget.imageItem.path!),
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) {
           return _buildPlaceholder(Icons.broken_image, Colors.grey);
         },
       );
-    } else if (imageItem.isDownloading) {
+    } else if (widget.imageItem.isDownloading) {
       // Image is currently downloading
-      return _buildPlaceholder(null, Colors.grey[300]!, showProgress: true);
+      return _buildLoadingPlaceholder();
     } else {
       // Image is missing (not yet downloaded or failed)
-      return _buildPlaceholder(Icons.cloud_download, Colors.grey[400]!);
+      return _buildPlaceholder(Icons.cloud_download, Colors.grey[800]!);
     }
   }
 
-  Widget _buildPlaceholder(
-    IconData? icon,
-    Color color, {
-    bool showProgress = false,
-  }) {
+  Widget _buildLoadingPlaceholder() {
+    return AnimatedBuilder(
+      animation: _pulseAnimation,
+      builder: (context, child) {
+        return Container(
+          color: Colors.grey[900],
+          child: Center(
+            child: Icon(
+              Icons.cloud_download,
+              color: Colors.white.withOpacity(_pulseAnimation.value),
+              size: 32,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPlaceholder(IconData? icon, Color color) {
     return Container(
       color: color,
-      child: Center(
-        child: showProgress
-            ? const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white70),
-                ),
-              )
-            : Icon(icon, color: Colors.white70, size: 32),
-      ),
+      child: Center(child: Icon(icon, color: Colors.white38, size: 32)),
     );
   }
 }
