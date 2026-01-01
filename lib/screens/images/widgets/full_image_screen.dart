@@ -67,9 +67,11 @@ class _FullImageScreenState extends State<FullImageScreen> {
 
       // Calculate the transformation to zoom in centered on the tap position
       final matrix = Matrix4.identity()
-        ..translate(position.dx, position.dy)
-        ..scale(zoomScale, zoomScale, 1.0)
-        ..translate(-position.dx, -position.dy);
+        ..translate(
+          -position.dx * (zoomScale - 1),
+          -position.dy * (zoomScale - 1),
+        )
+        ..scale(zoomScale);
 
       controller.value = matrix;
     }
