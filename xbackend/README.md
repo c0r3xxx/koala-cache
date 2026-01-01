@@ -4,10 +4,16 @@
 - remove "#[allow(dead_code)]"
 
 
+```bash
+podman-compose up -d
+
 curl --header "Content-Type: application/json" \
   --request POST \
   --data '{"username":"aaron","password":"0ekX8eIIC6Ft3P8W"}' \
   http://localhost:3000/login
+```
+
+
 
 /* db::create_user(
     &pool,

@@ -4,10 +4,7 @@ import 'dart:io';
 class FullImageScreen extends StatelessWidget {
   final String imagePath;
 
-  const FullImageScreen({
-    super.key,
-    required this.imagePath,
-  });
+  const FullImageScreen({super.key, required this.imagePath});
 
   @override
   Widget build(BuildContext context) {
@@ -23,7 +20,9 @@ class FullImageScreen extends StatelessWidget {
       ),
       body: Center(
         child: InteractiveViewer(
-          child: Image.file(File(imagePath)),
+          child: SizedBox.expand(
+            child: Image.file(File(imagePath), fit: BoxFit.contain),
+          ),
         ),
       ),
     );
