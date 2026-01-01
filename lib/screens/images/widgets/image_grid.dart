@@ -5,7 +5,7 @@ import 'image_grid_item.dart';
 class ImageGrid extends StatelessWidget {
   final List<ImageItem> imageItems;
   final Future<void> Function() onRefresh;
-  final void Function(BuildContext, String) onImageTap;
+  final void Function(BuildContext, String, String) onImageTap;
 
   const ImageGrid({
     super.key,
@@ -31,7 +31,7 @@ class ImageGrid extends StatelessWidget {
           return ImageGridItem(
             imageItem: item,
             onTap: item.path != null
-                ? () => onImageTap(context, item.path!)
+                ? () => onImageTap(context, item.path!, item.hash)
                 : null,
           );
         },

@@ -228,10 +228,12 @@ class _ImagesScreenState extends State<ImagesScreen> {
     );
   }
 
-  void _showFullImage(BuildContext context, String path) {
+  void _showFullImage(BuildContext context, String path, String hash) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => FullImageScreen(imagePath: path)),
+      MaterialPageRoute(
+        builder: (context) => FullImageScreen(imagePath: path, hash: hash),
+      ),
     );
   }
 }

@@ -3,8 +3,13 @@ import 'dart:io';
 
 class FullImageScreen extends StatelessWidget {
   final String imagePath;
+  final String hash;
 
-  const FullImageScreen({super.key, required this.imagePath});
+  const FullImageScreen({
+    super.key,
+    required this.imagePath,
+    required this.hash,
+  });
 
   @override
   Widget build(BuildContext context) {
