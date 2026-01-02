@@ -1,230 +1,227 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:typed_data';
+import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'data_store.dart';
 import 'http_client.dart';
 
-/// Model representing image metadata from the server
-class ImageMetadata {
+/// Result struct containing image metadata and widget
+class ImageResult {
   final String hash;
-  final String extension;
-  final String owner;
+  final String? extension;
+  final String? owner;
   final String? imageName;
+  final DateTime? createdAt;
+  final DateTime? modifiedAt;
   final double? longitude;
   final double? latitude;
-  final DateTime createdAt;
-  final DateTime modifiedAt;
+  final Widget imageWidget;
 
-  ImageMetadata({
+  ImageResult({
     required this.hash,
-    required this.extension,
-    required this.owner,
+    this.extension,
+    this.owner,
     this.imageName,
+    this.createdAt,
+    this.modifiedAt,
     this.longitude,
     this.latitude,
-    required this.createdAt,
-    required this.modifiedAt,
+    required this.imageWidget,
   });
+}
 
-  factory ImageMetadata.fromJson(Map<String, dynamic> json) {
-    return ImageMetadata(
-      hash: json['hash'] as String,
-      extension: json['extension'] as String,
-      owner: json['owner'] as String,
-      imageName: json['image_name'] as String?,
-      longitude: json['longitude'] as double?,
-      latitude: json['latitude'] as double?,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      modifiedAt: DateTime.parse(json['modified_at'] as String),
+/// Service for managing cached images
+class ImageCacheService {
+  /// Get image by hash, trying local cache first, then server
+  /// If fetched from server, saves to local cache
+  static Future<ImageResult?> getImageByHash(String hash) async {
+    // Try to get from local cache first
+    try {
+      final localResult = await _getImageByHashFromLocal(hash);
+      if (localResult != null) {
+        return localResult;
+      }
+    } catch (e) {
+      // Local fetch failed, continue to server fetch
+      debugPrint('Failed to get image from local cache: $e');
+    }
+
+    // Try to get from server
+    final serverResult = await _getImageByHashFromServer(hash);
+    if (serverResult == null) {
+      return null;
+    }
+
+    // Save to local cache
+    try {
+      await _saveImageToCache(serverResult);
+    } catch (e) {
+      debugPrint('Failed to save image to cache: $e');
+      // Still return the server result even if caching fails
+    }
+
+    return serverResult;
+  }
+
+  /// Save an image result to local cache
+  static Future<void> _saveImageToCache(ImageResult imageResult) async {
+    // Get the cache directory
+    final cacheDir = await getApplicationCacheDirectory();
+    final imagesDir = Directory('${cacheDir.path}/images');
+
+    // Create images directory if it doesn't exist
+    if (!await imagesDir.exists()) {
+      await imagesDir.create(recursive: true);
+    }
+
+    // Create file path with hash and extension
+    final extension = imageResult.extension ?? 'jpg';
+    final filePath = '${imagesDir.path}/${imageResult.hash}.$extension';
+
+    // Extract image bytes from the widget
+    // Since the widget is Image.memory, we need to get the bytes differently
+    // We'll need to re-fetch or store the bytes separately
+    // For now, let's get the bytes from the Image.memory widget
+    final imageWidget = imageResult.imageWidget as Image;
+    final memoryImage = imageWidget.image as MemoryImage;
+    final imageBytes = memoryImage.bytes;
+
+    // Write image bytes to file
+    final file = File(filePath);
+    await file.writeAsBytes(imageBytes);
+
+    // Save metadata to DataStore
+    final metadata = {
+      'hash': imageResult.hash,
+      'extension': imageResult.extension,
+      'owner': imageResult.owner,
+      'image_name': imageResult.imageName,
+      'created_at': imageResult.createdAt?.toIso8601String(),
+      'modified_at': imageResult.modifiedAt?.toIso8601String(),
+      'longitude': imageResult.longitude,
+      'latitude': imageResult.latitude,
+    };
+
+    final dataStore = await DataStore.getInstance();
+    await dataStore.saveImageMetadata(imageResult.hash, jsonEncode(metadata));
+    await dataStore.saveImageHashMapping(imageResult.hash, filePath);
+  }
+
+  /// Get image data and metadata by hash
+  static Future<ImageResult?> _getImageByHashFromLocal(String hash) async {
+    // Get DataStore instance
+    final dataStore = await DataStore.getInstance();
+
+    // Get image path for the hash
+    final imagePath = await dataStore.getImagePathForHash(hash);
+    if (imagePath == null) {
+      throw Exception('Image path not found for hash: $hash');
+    }
+
+    // Validate that the file exists
+    final file = File(imagePath);
+    if (!await file.exists()) {
+      throw Exception('Image file not found at path: $imagePath');
+    }
+
+    // Get metadata JSON
+    final metadataJson = await dataStore.getImageMetadata(hash);
+
+    // Parse metadata if available
+    Map<String, dynamic>? metadata;
+    if (metadataJson != null) {
+      metadata = jsonDecode(metadataJson) as Map<String, dynamic>;
+    } else {
+      throw Exception('Metadata not found for hash: $hash');
+    }
+
+    // Create image widget from file
+    final imageWidget = Image.file(
+      file,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        return const Icon(Icons.broken_image, size: 50);
+      },
+    );
+
+    return ImageResult(
+      hash: hash,
+      extension: metadata['extension'] as String,
+      owner: metadata['owner'] as String,
+      imageName: metadata['image_name'] as String?,
+      createdAt: DateTime.parse(metadata['created_at'] as String),
+      modifiedAt: DateTime.parse(metadata['modified_at'] as String),
+      longitude: metadata['longitude'] != null
+          ? (metadata['longitude'] as num).toDouble()
+          : null,
+      latitude: metadata['latitude'] != null
+          ? (metadata['latitude'] as num).toDouble()
+          : null,
+      imageWidget: imageWidget,
     );
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      'hash': hash,
-      'extension': extension,
-      'owner': owner,
-      'image_name': imageName,
-      'longitude': longitude,
-      'latitude': latitude,
-      'created_at': createdAt.toIso8601String(),
-      'modified_at': modifiedAt.toIso8601String(),
-    };
-  }
-}
-
-/// Service for managing image cache and downloads
-class ImageCacheService {
-  static ImageCacheService? _instance;
-  final DataStore _dataStore;
-  Directory? _cacheDir;
-
-  ImageCacheService._(this._dataStore);
-
-  /// Get the singleton instance of ImageCacheService
-  static Future<ImageCacheService> getInstance() async {
-    if (_instance == null) {
-      final dataStore = await DataStore.getInstance();
-      _instance = ImageCacheService._(dataStore);
-      await _instance!._initCacheDirectory();
-    }
-    return _instance!;
-  }
-
-  /// Initialize the koala-cache directory
-  Future<void> _initCacheDirectory() async {
-    final appDir = await getApplicationDocumentsDirectory();
-    _cacheDir = Directory('${appDir.path}/koala-cache');
-
-    if (!await _cacheDir!.exists()) {
-      await _cacheDir!.create(recursive: true);
-    }
-  }
-
-  /// Get the local file path for an image hash
-  String _getLocalImagePath(String hash, String extension) {
-    // Remove leading dot from extension if present
-    final ext = extension.startsWith('.') ? extension : '.$extension';
-    return '${_cacheDir!.path}/$hash$ext';
-  }
-
-  /// Check if image exists locally or in data store
-  Future<String?> getImagePath(String hash) async {
-    // First check if we have a mapping in the data store
-    final storedPath = await _dataStore.getImagePathForHash(hash);
-
-    if (storedPath != null) {
-      // Verify the file still exists
-      if (await File(storedPath).exists()) {
-        return storedPath;
-      } else {
-        // File was deleted, remove the mapping
-        await _dataStore.removeImageHashMapping(hash);
-        await _dataStore.removeImageMetadata(hash);
-      }
-    }
-
-    return null;
-  }
-
-  /// Download image from server if not available locally
-  Future<String?> ensureImageAvailable(String hash) async {
-    // Check if image already exists locally
-    final existingPath = await getImagePath(hash);
-    if (existingPath != null) {
-      return existingPath;
-    }
-
-    // Download from server
-    return await downloadImage(hash);
-  }
-
-  /// Download an image from the server
-  Future<String?> downloadImage(String hash) async {
+  /// Get image data and metadata by hash from the server
+  /// Returns null if the request fails or image cannot be fetched
+  static Future<ImageResult?> _getImageByHashFromServer(String hash) async {
     try {
-      // Make authenticated GET request to download image
-      final response = await HttpClient.authenticatedGet('img/$hash');
+      // Make authenticated GET request to /img/{hash}
+      final response = await HttpClient.authenticatedGet('/img/$hash');
 
       if (response.statusCode != 200) {
-        print('Failed to download image $hash: ${response.statusCode}');
         return null;
       }
 
       // Parse the JSON response
-      final jsonResponse = jsonDecode(response.body) as Map<String, dynamic>;
-      final content = jsonResponse['content'] as String;
-      final extension = jsonResponse['extension'] as String;
+      final jsonData = jsonDecode(response.body) as Map<String, dynamic>;
 
-      // Create metadata object
-      final metadata = ImageMetadata.fromJson(jsonResponse);
+      // Extract fields from response
+      final String responseHash = jsonData['hash'] as String;
+      final String extension = jsonData['extension'] as String;
+      final String owner = jsonData['owner'] as String;
+      final String? imageName = jsonData['image_name'] as String?;
+      final double? longitude = jsonData['longitude'] != null
+          ? (jsonData['longitude'] as num).toDouble()
+          : null;
+      final double? latitude = jsonData['latitude'] != null
+          ? (jsonData['latitude'] as num).toDouble()
+          : null;
+      final DateTime createdAt = DateTime.parse(
+        jsonData['created_at'] as String,
+      );
+      final DateTime modifiedAt = DateTime.parse(
+        jsonData['modified_at'] as String,
+      );
+      final String base64Content = jsonData['content'] as String;
 
-      // Decode base64 content
-      final imageBytes = base64Decode(content);
+      // Decode base64 image content
+      final Uint8List imageBytes = base64Decode(base64Content);
 
-      // Save image to local cache directory
-      final localPath = _getLocalImagePath(hash, extension);
-      final file = File(localPath);
-      await file.writeAsBytes(imageBytes);
+      // Create image widget from bytes
+      final imageWidget = Image.memory(
+        imageBytes,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return const Icon(Icons.broken_image, size: 50);
+        },
+      );
 
-      // Save path mapping in data store
-      await _dataStore.saveImageHashMapping(hash, localPath);
-
-      // Save metadata in data store
-      await _dataStore.saveImageMetadata(hash, jsonEncode(metadata.toJson()));
-
-      print('Successfully downloaded and cached image: $hash');
-      return localPath;
+      // Return the result with metadata and image widget
+      return ImageResult(
+        hash: responseHash,
+        extension: extension,
+        owner: owner,
+        imageName: imageName,
+        createdAt: createdAt,
+        modifiedAt: modifiedAt,
+        longitude: longitude,
+        latitude: latitude,
+        imageWidget: imageWidget,
+      );
     } catch (e) {
-      print('Error downloading image $hash: $e');
+      // Return null if any error occurs
       return null;
     }
-  }
-
-  /// Get metadata for an image hash
-  Future<ImageMetadata?> getImageMetadata(String hash) async {
-    final metadataJson = await _dataStore.getImageMetadata(hash);
-    if (metadataJson == null) return null;
-
-    try {
-      final json = jsonDecode(metadataJson) as Map<String, dynamic>;
-      return ImageMetadata.fromJson(json);
-    } catch (e) {
-      print('Error parsing metadata for $hash: $e');
-      return null;
-    }
-  }
-
-  /// Download multiple images in batch
-  Future<Map<String, String?>> downloadImagesInBatch(
-    List<String> hashes,
-  ) async {
-    final results = <String, String?>{};
-
-    for (final hash in hashes) {
-      final path = await ensureImageAvailable(hash);
-      results[hash] = path;
-    }
-
-    return results;
-  }
-
-  /// Clear the entire image cache
-  Future<void> clearCache() async {
-    if (_cacheDir != null && await _cacheDir!.exists()) {
-      // Delete all files in cache directory
-      await for (final entity in _cacheDir!.list()) {
-        if (entity is File) {
-          await entity.delete();
-        }
-      }
-    }
-
-    // Clear all mappings and metadata from data store
-    final mappings = await _dataStore.getAllImageHashMappings();
-    for (final hash in mappings.keys) {
-      await _dataStore.removeImageHashMapping(hash);
-      await _dataStore.removeImageMetadata(hash);
-    }
-  }
-
-  /// Get cache directory path
-  String? getCacheDirectoryPath() {
-    return _cacheDir?.path;
-  }
-
-  /// Get cache size in bytes
-  Future<int> getCacheSize() async {
-    if (_cacheDir == null || !await _cacheDir!.exists()) {
-      return 0;
-    }
-
-    int totalSize = 0;
-    await for (final entity in _cacheDir!.list()) {
-      if (entity is File) {
-        totalSize += await entity.length();
-      }
-    }
-
-    return totalSize;
   }
 }

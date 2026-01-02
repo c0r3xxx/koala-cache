@@ -1,22 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/data_store.dart';
-import '../../services/http_client.dart';
 import '../../services/image_cache_service.dart';
-import '../../services/permissions_service.dart';
-import '../widgets/snackbar.dart';
-import 'widgets/images_app_bar.dart';
-import 'widgets/error_view.dart';
-import 'widgets/empty_images_view.dart';
-import 'widgets/image_grid.dart';
-import 'widgets/full_image_screen.dart';
-
-class ImageItem {
-  final String hash;
-  String? path;
-  bool isDownloading;
-
-  ImageItem({required this.hash, this.path, this.isDownloading = false});
-}
 
 class ImagesScreen extends StatefulWidget {
   const ImagesScreen({super.key});
@@ -26,151 +10,53 @@ class ImagesScreen extends StatefulWidget {
 }
 
 class _ImagesScreenState extends State<ImagesScreen> {
-  List<ImageItem> _imageItems = [];
+  List<String> _imageHashes = [];
   bool _isLoading = true;
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _requestPermissionsAndLoadImages();
+    _loadImageHashes();
   }
 
-  Future<void> _requestPermissionsAndLoadImages() async {
-    final hasPermission = await PermissionsService.requestStoragePermission(
-      context,
-    );
-    if (!hasPermission) {
-      _setError('Storage permission is required to load images.');
-      return;
-    }
-    await _loadImages();
-  }
-
-  Future<void> _loadImages() async {
-    _setLoadingState();
-
+  Future<void> _loadImageHashes() async {
     try {
-      // Load cached hashes first for quick display
-      final cachedHashes = await _getCachedHashes();
-      if (cachedHashes.isNotEmpty) {
-        final imageItems = await _createImageItems(cachedHashes);
-        _updateImages(imageItems);
-      }
+      final dataStore = await DataStore.getInstance();
+      final hashes = await dataStore.getAllImageHashes();
 
-      // Then refresh from server
-      await _refreshFromServer();
+      setState(() {
+        _imageHashes = hashes;
+        _isLoading = false;
+      });
     } catch (e) {
-      print('Error loading images: $e');
-      _setError('Failed to load images: ${e.toString()}');
+      setState(() {
+        _errorMessage = 'Failed to load images: $e';
+        _isLoading = false;
+      });
     }
   }
 
-  Future<void> _refreshFromServer() async {
-    try {
-      final hashStrings = await HttpClient.fetchImageHashes();
-      await _saveHashes(hashStrings);
-      final imageItems = await _createImageItems(hashStrings);
-      _updateImages(imageItems);
-    } catch (e) {
-      print('Error refreshing from server: $e');
-      _handleRefreshError();
-    }
-  }
-
-  Future<void> _downloadImage(ImageItem item) async {
-    if (item.path != null || item.isDownloading) return;
-
-    setState(() => item.isDownloading = true);
-
-    try {
-      final imageCacheService = await ImageCacheService.getInstance();
-      final path = await imageCacheService.downloadImage(item.hash);
-
-      if (mounted && path != null) {
-        setState(() {
-          item.path = path;
-          item.isDownloading = false;
-        });
-      }
-    } catch (e) {
-      print('Failed to download image ${item.hash}: $e');
-      if (mounted) {
-        setState(() => item.isDownloading = false);
-      }
-    }
-  }
-
-  // Helper methods
-  Future<List<String>> _getCachedHashes() async {
-    final dataStore = await DataStore.getInstance();
-    return await dataStore.getAllImageHashes();
-  }
-
-  Future<void> _saveHashes(List<String> hashes) async {
-    final dataStore = await DataStore.getInstance();
-    await dataStore.saveAllImageHashes(hashes);
-  }
-
-  Future<List<ImageItem>> _createImageItems(List<String> hashes) async {
-    final imageCacheService = await ImageCacheService.getInstance();
-    final imageItems = <ImageItem>[];
-
-    for (final hash in hashes) {
-      final imagePath = await imageCacheService.getImagePath(hash);
-      imageItems.add(ImageItem(hash: hash, path: imagePath));
-    }
-
-    return imageItems;
-  }
-
-  void _setLoadingState() {
+  Future<void> _refreshImages() async {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
+    await _loadImageHashes();
   }
-
-  void _setError(String message) {
-    setState(() {
-      _isLoading = false;
-      _errorMessage = message;
-    });
-  }
-
-  void _updateImages(List<ImageItem> imageItems) {
-    setState(() {
-      _imageItems = imageItems;
-      _errorMessage = null;
-      _isLoading = false;
-    });
-  }
-
-  void _handleRefreshError() {
-    if (_imageItems.isEmpty) {
-      _setError('Failed to load images from server.');
-    } else if (mounted) {
-      AppSnackBar.showInfo(
-        context,
-        'Showing cached images. Unable to refresh from server.',
-        action: SnackBarAction(label: 'Retry', onPressed: _loadImages),
-      );
-    }
-  }
-
-  int get _downloadedCount =>
-      _imageItems.where((item) => item.path != null).length;
-
-  int get _downloadingCount =>
-      _imageItems.where((item) => item.isDownloading).length;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: ImagesAppBar(
-        onRefresh: _loadImages,
-        imageCount: _downloadedCount,
-        downloadingCount: _downloadingCount,
+      appBar: AppBar(
+        title: const Text('Images'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshImages,
+            tooltip: 'Refresh',
+          ),
+        ],
       ),
       body: _buildBody(),
     );
@@ -182,35 +68,267 @@ class _ImagesScreenState extends State<ImagesScreen> {
     }
 
     if (_errorMessage != null) {
-      return ErrorView(errorMessage: _errorMessage!, onRetry: _loadImages);
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
+            const SizedBox(height: 16),
+            Text(
+              _errorMessage!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _refreshImages,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
     }
 
-    if (_imageItems.isEmpty) {
-      return const EmptyImagesView(downloadingCount: 0);
+    if (_imageHashes.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.image_not_supported, size: 64, color: Colors.grey),
+            SizedBox(height: 16),
+            Text(
+              'No images available',
+              style: TextStyle(fontSize: 16, color: Colors.grey),
+            ),
+          ],
+        ),
+      );
     }
 
-    return ImageGrid(
-      imageItems: _imageItems,
-      onRefresh: _loadImages,
-      onImageTap: _showFullImage,
-      onImageVisible: _downloadImage,
+    return GridView.builder(
+      padding: const EdgeInsets.all(8),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+      ),
+      itemCount: _imageHashes.length,
+      itemBuilder: (context, index) {
+        return LazyImageItem(
+          hash: _imageHashes[index],
+          onTap: () => _showImageDetail(context, _imageHashes[index]),
+        );
+      },
     );
   }
 
-  void _showFullImage(BuildContext context, String path, String hash) {
-    final currentIndex = _imageItems.indexWhere((item) => item.hash == hash);
-    if (currentIndex == -1) return;
-
+  void _showImageDetail(BuildContext context, String hash) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => FullImageScreen(
-          imagePaths: _imageItems.map((item) => item.path).toList(),
-          hashes: _imageItems.map((item) => item.hash).toList(),
-          initialIndex: currentIndex,
-          onImageDeleted: _loadImages,
-        ),
+      MaterialPageRoute(builder: (context) => ImageDetailScreen(hash: hash)),
+    );
+  }
+}
+
+/// Widget that lazily loads an image when it becomes visible
+class LazyImageItem extends StatefulWidget {
+  final String hash;
+  final VoidCallback? onTap;
+
+  const LazyImageItem({super.key, required this.hash, this.onTap});
+
+  @override
+  State<LazyImageItem> createState() => _LazyImageItemState();
+}
+
+class _LazyImageItemState extends State<LazyImageItem> {
+  ImageResult? _imageResult;
+  bool _isLoading = false;
+  bool _hasError = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: _buildContent(),
       ),
     );
+  }
+
+  Widget _buildContent() {
+    if (_imageResult != null) {
+      return _imageResult!.imageWidget;
+    }
+
+    if (_hasError) {
+      return Container(
+        color: Colors.grey[300],
+        child: const Center(
+          child: Icon(Icons.broken_image, size: 32, color: Colors.red),
+        ),
+      );
+    }
+
+    if (_isLoading) {
+      return Container(
+        color: Colors.grey[200],
+        child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      );
+    }
+
+    // Not loaded yet - trigger load when visible
+    // Using a post-frame callback to load after the widget is built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_isLoading) {
+        _loadImage();
+      }
+    });
+
+    return Container(
+      color: Colors.grey[200],
+      child: const Center(
+        child: Icon(Icons.image, size: 32, color: Colors.grey),
+      ),
+    );
+  }
+
+  Future<void> _loadImage() async {
+    if (_isLoading) return;
+
+    setState(() {
+      _isLoading = true;
+      _hasError = false;
+    });
+
+    try {
+      final result = await ImageCacheService.getImageByHash(widget.hash);
+
+      if (mounted) {
+        setState(() {
+          _imageResult = result;
+          _isLoading = false;
+          _hasError = result == null;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+        });
+      }
+    }
+  }
+}
+
+/// Detail screen showing full image and metadata
+class ImageDetailScreen extends StatelessWidget {
+  final String hash;
+
+  const ImageDetailScreen({super.key, required this.hash});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Image Details')),
+      body: FutureBuilder<ImageResult?>(
+        future: ImageCacheService.getImageByHash(hash),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Failed to load image\n${snapshot.error ?? "Unknown error"}',
+                  ),
+                ],
+              ),
+            );
+          }
+
+          final imageResult = snapshot.data!;
+          return SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Full image
+                AspectRatio(aspectRatio: 1, child: imageResult.imageWidget),
+                // Metadata
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (imageResult.imageName != null) ...[
+                        _buildMetadataRow('Name', imageResult.imageName!),
+                        const SizedBox(height: 8),
+                      ],
+                      _buildMetadataRow('Hash', imageResult.hash),
+                      const SizedBox(height: 8),
+                      _buildMetadataRow(
+                        'Owner',
+                        imageResult.owner ?? 'Unknown',
+                      ),
+                      const SizedBox(height: 8),
+                      if (imageResult.createdAt != null) ...[
+                        _buildMetadataRow(
+                          'Created',
+                          _formatDate(imageResult.createdAt!),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      if (imageResult.modifiedAt != null) ...[
+                        _buildMetadataRow(
+                          'Modified',
+                          _formatDate(imageResult.modifiedAt!),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      if (imageResult.latitude != null &&
+                          imageResult.longitude != null) ...[
+                        _buildMetadataRow(
+                          'Location',
+                          '${imageResult.latitude!.toStringAsFixed(6)}, ${imageResult.longitude!.toStringAsFixed(6)}',
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildMetadataRow(String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 100,
+          child: Text(
+            '$label:',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ),
+        Expanded(child: Text(value)),
+      ],
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} '
+        '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
 }
