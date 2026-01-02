@@ -1,18 +1,53 @@
 import 'package:flutter/material.dart';
 import 'package:koala_cache/services/image_cache_service.dart';
 
-/// Detail screen showing full image and metadata
-class ImageDetailScreen extends StatelessWidget {
+/// Detail screen showing full zoomable image
+class ImageDetailScreen extends StatefulWidget {
   final String hash;
 
   const ImageDetailScreen({super.key, required this.hash});
 
   @override
+  State<ImageDetailScreen> createState() => _ImageDetailScreenState();
+}
+
+class _ImageDetailScreenState extends State<ImageDetailScreen> {
+  final TransformationController _transformationController =
+      TransformationController();
+
+  @override
+  void dispose() {
+    _transformationController.dispose();
+    super.dispose();
+  }
+
+  void _handleDoubleTap(TapDownDetails details) {
+    // Toggle between zoomed in and zoomed out
+    if (_transformationController.value != Matrix4.identity()) {
+      // Reset to original size
+      _transformationController.value = Matrix4.identity();
+    } else {
+      // Zoom in to 2x centered on tap position
+      final double scale = 2.0;
+      final position = details.localPosition;
+
+      _transformationController.value = Matrix4.identity()
+        ..translate(-position.dx * (scale - 1), -position.dy * (scale - 1))
+        ..scale(scale);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Image Details')),
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text('Image', style: TextStyle(color: Colors.white)),
+      ),
       body: FutureBuilder<ImageResult?>(
-        future: ImageCacheService.getImageByHash(hash),
+        future: ImageCacheService.getImageByHash(widget.hash),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -27,6 +62,8 @@ class ImageDetailScreen extends StatelessWidget {
                   const SizedBox(height: 16),
                   Text(
                     'Failed to load image\n${snapshot.error ?? "Unknown error"}',
+                    style: const TextStyle(color: Colors.white),
+                    textAlign: TextAlign.center,
                   ),
                 ],
               ),
@@ -34,79 +71,17 @@ class ImageDetailScreen extends StatelessWidget {
           }
 
           final imageResult = snapshot.data!;
-          return SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Full image
-                AspectRatio(aspectRatio: 1, child: imageResult.imageWidget),
-                // Metadata
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (imageResult.imageName != null) ...[
-                        _buildMetadataRow('Name', imageResult.imageName!),
-                        const SizedBox(height: 8),
-                      ],
-                      _buildMetadataRow('Hash', imageResult.hash),
-                      const SizedBox(height: 8),
-                      _buildMetadataRow(
-                        'Owner',
-                        imageResult.owner ?? 'Unknown',
-                      ),
-                      const SizedBox(height: 8),
-                      if (imageResult.createdAt != null) ...[
-                        _buildMetadataRow(
-                          'Created',
-                          _formatDate(imageResult.createdAt!),
-                        ),
-                        const SizedBox(height: 8),
-                      ],
-                      if (imageResult.modifiedAt != null) ...[
-                        _buildMetadataRow(
-                          'Modified',
-                          _formatDate(imageResult.modifiedAt!),
-                        ),
-                        const SizedBox(height: 8),
-                      ],
-                      if (imageResult.latitude != null &&
-                          imageResult.longitude != null) ...[
-                        _buildMetadataRow(
-                          'Location',
-                          '${imageResult.latitude!.toStringAsFixed(6)}, ${imageResult.longitude!.toStringAsFixed(6)}',
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
+          return GestureDetector(
+            onDoubleTapDown: (details) => _handleDoubleTap(details),
+            child: InteractiveViewer(
+              transformationController: _transformationController,
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Center(child: imageResult.imageWidget),
             ),
           );
         },
       ),
     );
-  }
-
-  Widget _buildMetadataRow(String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 100,
-          child: Text(
-            '$label:',
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-        ),
-        Expanded(child: Text(value)),
-      ],
-    );
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} '
-        '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
 }
