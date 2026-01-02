@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
 import '../../services/data_store.dart';
 import '../../services/http_client.dart';
 import '../../services/image_cache_service.dart';
@@ -95,51 +94,43 @@ class _ImagesScreenState extends State<ImagesScreen> {
     try {
       final imageCacheService = await ImageCacheService.getInstance();
 
-      final response = await HttpClient.authenticatedGet('img/hashes');
+      final hashStrings = await HttpClient.fetchImageHashes();
 
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> jsonResponse = jsonDecode(response.body);
-        final List<dynamic> hashes = jsonResponse['hashes'] ?? [];
+      final dataStore = await DataStore.getInstance();
+      await dataStore.saveAllImageHashes(hashStrings);
 
-        final hashStrings = hashes.map((h) => h.toString()).toList();
-        final dataStore = await DataStore.getInstance();
-        await dataStore.saveAllImageHashes(hashStrings);
+      final imageItems = <ImageItem>[];
+      final missingIndices = <int>[];
 
-        final imageItems = <ImageItem>[];
-        final missingIndices = <int>[];
+      for (int i = 0; i < hashStrings.length; i++) {
+        final hashStr = hashStrings[i];
+        final imagePath = await imageCacheService.getImagePath(hashStr);
 
-        for (int i = 0; i < hashes.length; i++) {
-          final hashStr = hashes[i].toString();
-          final imagePath = await imageCacheService.getImagePath(hashStr);
+        imageItems.add(ImageItem(hash: hashStr, path: imagePath));
 
-          imageItems.add(ImageItem(hash: hashStr, path: imagePath));
-
-          if (imagePath == null) {
-            missingIndices.add(i);
-          }
+        if (imagePath == null) {
+          missingIndices.add(i);
         }
+      }
 
+      setState(() {
+        _imageItems = imageItems;
+        _errorMessage = null;
+      });
+
+      if (missingIndices.isNotEmpty) {
         setState(() {
-          _imageItems = imageItems;
-          _errorMessage = null;
+          _downloadingCount = missingIndices.length;
         });
 
-        if (missingIndices.isNotEmpty) {
-          setState(() {
-            _downloadingCount = missingIndices.length;
-          });
-
-          if (mounted) {
-            AppSnackBar.showInfo(
-              context,
-              'Downloading $_downloadingCount missing image${_downloadingCount != 1 ? 's' : ''}...',
-            );
-          }
-
-          await _downloadMissingImages(missingIndices, imageCacheService);
+        if (mounted) {
+          AppSnackBar.showInfo(
+            context,
+            'Downloading $_downloadingCount missing image${_downloadingCount != 1 ? 's' : ''}...',
+          );
         }
-      } else {
-        throw Exception('Failed to load images: ${response.statusCode}');
+
+        await _downloadMissingImages(missingIndices, imageCacheService);
       }
     } catch (e) {
       print('Error refreshing from server: $e');

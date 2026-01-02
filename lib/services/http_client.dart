@@ -17,7 +17,6 @@ class HttpClient {
   static Future<http.Response> _authenticatedRequest(
     String method,
     String path, {
-    Map<String, String>? headers,
     Object? body,
   }) async {
     // Ensure we have a valid token
@@ -39,11 +38,6 @@ class HttpClient {
 
     // Add authorization header
     request.headers['Authorization'] = 'Bearer $token';
-
-    // Add any additional headers
-    if (headers != null) {
-      request.headers.addAll(headers);
-    }
 
     // Add body if provided
     if (body != null) {
@@ -119,7 +113,7 @@ class HttpClient {
     }
 
     final serverUrl = await dataStore.getServerUrl();
-    final url = '$serverUrl/login';
+    final url = '${serverUrl}login';
 
     try {
       final response = await http
@@ -168,6 +162,19 @@ class HttpClient {
   // generic authnicated delete
   static Future<http.Response> authenticatedDelete(String path) async {
     return await _authenticatedRequest('DELETE', path);
+  }
+
+  /// Fetch all image hashes from the server
+  static Future<List<String>> fetchImageHashes() async {
+    final response = await authenticatedGet('img/hashes');
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> jsonResponse = jsonDecode(response.body);
+      final List<dynamic> hashes = jsonResponse['hashes'] ?? [];
+      return hashes.map((h) => h.toString()).toList();
+    } else {
+      throw Exception('Failed to load images: ${response.statusCode}');
+    }
   }
 
   /// Upload an image file to the server with authentication
