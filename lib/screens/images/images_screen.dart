@@ -100,38 +100,18 @@ class _ImagesScreenState extends State<ImagesScreen> {
       await dataStore.saveAllImageHashes(hashStrings);
 
       final imageItems = <ImageItem>[];
-      final missingIndices = <int>[];
 
       for (int i = 0; i < hashStrings.length; i++) {
         final hashStr = hashStrings[i];
         final imagePath = await imageCacheService.getImagePath(hashStr);
 
         imageItems.add(ImageItem(hash: hashStr, path: imagePath));
-
-        if (imagePath == null) {
-          missingIndices.add(i);
-        }
       }
 
       setState(() {
         _imageItems = imageItems;
         _errorMessage = null;
       });
-
-      if (missingIndices.isNotEmpty) {
-        setState(() {
-          _downloadingCount = missingIndices.length;
-        });
-
-        if (mounted) {
-          AppSnackBar.showInfo(
-            context,
-            'Downloading $_downloadingCount missing image${_downloadingCount != 1 ? 's' : ''}...',
-          );
-        }
-
-        await _downloadMissingImages(missingIndices, imageCacheService);
-      }
     } catch (e) {
       print('Error refreshing from server: $e');
       if (_imageItems.isEmpty) {
@@ -150,52 +130,31 @@ class _ImagesScreenState extends State<ImagesScreen> {
     }
   }
 
-  Future<void> _downloadMissingImages(
-    List<int> missingIndices,
-    ImageCacheService imageCacheService,
-  ) async {
-    int downloadedCount = 0;
-
-    for (final index in missingIndices) {
-      if (index >= _imageItems.length) continue;
-
-      final item = _imageItems[index];
-
-      setState(() {
-        item.isDownloading = true;
-      });
-
-      try {
-        final path = await imageCacheService.downloadImage(item.hash);
-
-        if (path != null && mounted) {
-          setState(() {
-            item.path = path;
-            item.isDownloading = false;
-            downloadedCount++;
-            _downloadingCount = missingIndices.length - downloadedCount;
-          });
-        }
-      } catch (e) {
-        print('Failed to download image ${item.hash}: $e');
-        if (mounted) {
-          setState(() {
-            item.isDownloading = false;
-          });
-        }
-      }
+  Future<void> _downloadImage(ImageItem item) async {
+    if (item.path != null || item.isDownloading) {
+      return; // Already downloaded or currently downloading
     }
 
-    if (mounted) {
-      setState(() {
-        _downloadingCount = 0;
-      });
+    setState(() {
+      item.isDownloading = true;
+    });
 
-      if (downloadedCount > 0) {
-        AppSnackBar.showInfo(
-          context,
-          'Downloaded $downloadedCount image${downloadedCount != 1 ? 's' : ''}',
-        );
+    try {
+      final imageCacheService = await ImageCacheService.getInstance();
+      final path = await imageCacheService.downloadImage(item.hash);
+
+      if (path != null && mounted) {
+        setState(() {
+          item.path = path;
+          item.isDownloading = false;
+        });
+      }
+    } catch (e) {
+      print('Failed to download image ${item.hash}: $e');
+      if (mounted) {
+        setState(() {
+          item.isDownloading = false;
+        });
       }
     }
   }
@@ -229,6 +188,7 @@ class _ImagesScreenState extends State<ImagesScreen> {
       imageItems: _imageItems,
       onRefresh: _loadImages,
       onImageTap: _showFullImage,
+      onImageVisible: _downloadImage,
     );
   }
 

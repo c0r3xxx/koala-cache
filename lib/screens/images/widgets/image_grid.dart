@@ -6,12 +6,14 @@ class ImageGrid extends StatelessWidget {
   final List<ImageItem> imageItems;
   final Future<void> Function() onRefresh;
   final void Function(BuildContext, String, String) onImageTap;
+  final Future<void> Function(ImageItem) onImageVisible;
 
   const ImageGrid({
     super.key,
     required this.imageItems,
     required this.onRefresh,
     required this.onImageTap,
+    required this.onImageVisible,
   });
 
   @override
@@ -33,6 +35,7 @@ class ImageGrid extends StatelessWidget {
             onTap: item.path != null
                 ? () => onImageTap(context, item.path!, item.hash)
                 : null,
+            onVisible: () => onImageVisible(item),
           );
         },
       ),

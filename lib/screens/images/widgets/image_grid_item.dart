@@ -5,11 +5,13 @@ import '../images_screen.dart';
 class ImageGridItem extends StatefulWidget {
   final ImageItem imageItem;
   final VoidCallback? onTap;
+  final VoidCallback onVisible;
 
   const ImageGridItem({
     super.key,
     required this.imageItem,
     required this.onTap,
+    required this.onVisible,
   });
 
   @override
@@ -20,6 +22,7 @@ class _ImageGridItemState extends State<ImageGridItem>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _pulseAnimation;
+  bool _hasTriggeredDownload = false;
 
   @override
   void initState() {
@@ -34,6 +37,9 @@ class _ImageGridItemState extends State<ImageGridItem>
     if (widget.imageItem.isDownloading) {
       _animationController.repeat(reverse: true);
     }
+
+    // Trigger download when widget is first built (visible)
+    _triggerDownloadIfNeeded();
   }
 
   @override
@@ -44,6 +50,18 @@ class _ImageGridItemState extends State<ImageGridItem>
     } else if (!widget.imageItem.isDownloading &&
         oldWidget.imageItem.isDownloading) {
       _animationController.stop();
+    }
+  }
+
+  void _triggerDownloadIfNeeded() {
+    if (!_hasTriggeredDownload &&
+        widget.imageItem.path == null &&
+        !widget.imageItem.isDownloading) {
+      _hasTriggeredDownload = true;
+      // Schedule the callback after the frame is built
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.onVisible();
+      });
     }
   }
 
