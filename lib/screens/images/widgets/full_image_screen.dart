@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:share_plus/share_plus.dart';
 import '../../../services/data_store.dart';
 import '../../../services/http_client.dart';
+import '../../widgets/snackbar.dart';
 import 'image_info_dialog.dart';
 import 'delete_confirmation_dialog.dart';
 import 'zoomable_image_viewer.dart';
@@ -11,12 +12,14 @@ class FullImageScreen extends StatefulWidget {
   final List<String?> imagePaths;
   final List<String> hashes;
   final int initialIndex;
+  final VoidCallback? onImageDeleted;
 
   const FullImageScreen({
     super.key,
     required this.imagePaths,
     required this.hashes,
     required this.initialIndex,
+    this.onImageDeleted,
   });
 
   @override
@@ -50,36 +53,36 @@ class _FullImageScreenState extends State<FullImageScreen> {
       final controller = TransformationController();
       controller.addListener(() {
         final scale = controller.value.getMaxScaleOnAxis();
-        setState(() {
-          _isZoomed = scale > 1.0;
-        });
+        final newZoomState = scale > 1.0;
+        if (newZoomState != _isZoomed) {
+          setState(() => _isZoomed = newZoomState);
+        }
       });
       _transformControllers[index] = controller;
     }
     return _transformControllers[index]!;
   }
 
+  String? get _currentImagePath => widget.imagePaths[_currentIndex];
+  String get _currentHash => widget.hashes[_currentIndex];
+
   Future<void> _shareImage() async {
-    final imagePath = widget.imagePaths[_currentIndex];
-    if (imagePath == null) {
+    if (_currentImagePath == null) {
       _showSnackBar('Image not downloaded yet');
       return;
     }
 
     try {
       await Share.shareXFiles([
-        XFile(imagePath),
+        XFile(_currentImagePath!),
       ], text: 'Shared from Koala Cache');
     } catch (e) {
-      if (mounted) _showSnackBar('Failed to share image: $e');
+      _showSnackBar('Failed to share image: $e');
     }
   }
 
   Future<void> _deleteImage() async {
-    final imagePath = widget.imagePaths[_currentIndex];
-    final hash = widget.hashes[_currentIndex];
-
-    if (imagePath == null) {
+    if (_currentImagePath == null) {
       _showSnackBar('Image not downloaded yet');
       return;
     }
@@ -89,17 +92,20 @@ class _FullImageScreenState extends State<FullImageScreen> {
 
     try {
       // Delete from local storage
-      final file = File(imagePath);
-      if (await file.exists()) await file.delete();
+      final file = File(_currentImagePath!);
+      if (await file.exists()) {
+        await file.delete();
+      }
 
       final dataStore = await DataStore.getInstance();
-      await dataStore.removeImageHashMapping(hash);
-      await dataStore.removeImageMetadata(hash);
+      await dataStore.removeImageHashMapping(_currentHash);
+      await dataStore.removeImageMetadata(_currentHash);
 
-      // Delete from server
+      // Delete from server (best effort)
       try {
-        final response = await HttpClient.authenticatedDelete('img/$hash');
-
+        final response = await HttpClient.authenticatedDelete(
+          'img/$_currentHash',
+        );
         if (response.statusCode != 200) {
           print(
             'Warning: Server deletion returned status ${response.statusCode}',
@@ -107,15 +113,15 @@ class _FullImageScreenState extends State<FullImageScreen> {
         }
       } catch (e) {
         print('Warning: Failed to delete from server: $e');
-        // Continue even if server deletion fails
       }
 
       if (mounted) {
         _showSnackBar('Image deleted successfully');
+        widget.onImageDeleted?.call();
         Navigator.of(context).pop(true);
       }
     } catch (e) {
-      if (mounted) _showSnackBar('Failed to delete image: $e');
+      _showSnackBar('Failed to delete image: $e');
     }
   }
 
@@ -126,15 +132,14 @@ class _FullImageScreenState extends State<FullImageScreen> {
   Future<void> _showImageInfo() async {
     await showImageInfoDialog(
       context,
-      hash: widget.hashes[_currentIndex],
-      imagePath: widget.imagePaths[_currentIndex],
+      hash: _currentHash,
+      imagePath: _currentImagePath,
     );
   }
 
   void _showSnackBar(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    if (!mounted) return;
+    AppSnackBar.showInfo(context, message);
   }
 
   @override

@@ -194,7 +194,7 @@ class HttpClient {
       'modified_at': modifiedAt.toUtc().toIso8601String(),
     };
 
-    final response = await _authenticatedRequest('POST', '/img', body: payload);
+    final response = await _authenticatedRequest('POST', 'img', body: payload);
 
     if (![200, 201, 409].contains(response.statusCode)) {
       throw Exception(

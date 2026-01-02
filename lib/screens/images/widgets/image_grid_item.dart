@@ -1,90 +1,52 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'package:visibility_detector/visibility_detector.dart';
 import '../images_screen.dart';
 
 class ImageGridItem extends StatefulWidget {
   final ImageItem imageItem;
   final VoidCallback? onTap;
-  final VoidCallback onVisible;
+  final VoidCallback? onVisible;
 
   const ImageGridItem({
     super.key,
     required this.imageItem,
     required this.onTap,
-    required this.onVisible,
+    this.onVisible,
   });
 
   @override
   State<ImageGridItem> createState() => _ImageGridItemState();
 }
 
-class _ImageGridItemState extends State<ImageGridItem>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
-  late Animation<double> _pulseAnimation;
-  bool _hasTriggeredDownload = false;
+class _ImageGridItemState extends State<ImageGridItem> {
+  bool _hasBeenVisible = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
-      vsync: this,
-    );
-    _pulseAnimation = Tween<double>(begin: 0.3, end: 0.6).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
-    );
-    if (widget.imageItem.isDownloading) {
-      _animationController.repeat(reverse: true);
+  void _onVisibilityChanged(VisibilityInfo info) {
+    // Trigger loading when at least 10% of the widget is visible
+    if (!_hasBeenVisible && info.visibleFraction > 0.1) {
+      _hasBeenVisible = true;
+      widget.onVisible?.call();
     }
-
-    // Trigger download when widget is first built (visible)
-    _triggerDownloadIfNeeded();
-  }
-
-  @override
-  void didUpdateWidget(ImageGridItem oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.imageItem.isDownloading && !oldWidget.imageItem.isDownloading) {
-      _animationController.repeat(reverse: true);
-    } else if (!widget.imageItem.isDownloading &&
-        oldWidget.imageItem.isDownloading) {
-      _animationController.stop();
-    }
-  }
-
-  void _triggerDownloadIfNeeded() {
-    if (!_hasTriggeredDownload &&
-        widget.imageItem.path == null &&
-        !widget.imageItem.isDownloading) {
-      _hasTriggeredDownload = true;
-      // Schedule the callback after the frame is built
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        widget.onVisible();
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: widget.onTap,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8.0),
-        child: _buildContent(),
+    return VisibilityDetector(
+      key: Key('image_${widget.imageItem.hash}'),
+      onVisibilityChanged: _onVisibilityChanged,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8.0),
+          child: _buildImageWidget(),
+        ),
       ),
     );
   }
 
-  Widget _buildContent() {
+  Widget _buildImageWidget() {
     if (widget.imageItem.path != null) {
-      // Image is downloaded and available
       return Image.file(
         File(widget.imageItem.path!),
         fit: BoxFit.cover,
@@ -93,36 +55,28 @@ class _ImageGridItemState extends State<ImageGridItem>
         },
       );
     } else if (widget.imageItem.isDownloading) {
-      // Image is currently downloading
       return _buildLoadingPlaceholder();
     } else {
-      // Image is missing (not yet downloaded or failed)
-      return _buildPlaceholder(Icons.cloud_download, Colors.grey[800]!);
+      return _buildPlaceholder(Icons.image, Colors.grey[800]!);
     }
   }
 
-  Widget _buildLoadingPlaceholder() {
-    return AnimatedBuilder(
-      animation: _pulseAnimation,
-      builder: (context, child) {
-        return Container(
-          color: Colors.grey[900],
-          child: Center(
-            child: Icon(
-              Icons.cloud_download,
-              color: Colors.white.withOpacity(_pulseAnimation.value),
-              size: 32,
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildPlaceholder(IconData? icon, Color color) {
+  Widget _buildPlaceholder(IconData icon, Color color) {
     return Container(
       color: color,
       child: Center(child: Icon(icon, color: Colors.white38, size: 32)),
+    );
+  }
+
+  Widget _buildLoadingPlaceholder() {
+    return Container(
+      color: Colors.grey[800],
+      child: const Center(
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          valueColor: AlwaysStoppedAnimation<Color>(Colors.white38),
+        ),
+      ),
     );
   }
 }

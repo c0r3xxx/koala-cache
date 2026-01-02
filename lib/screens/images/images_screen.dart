@@ -29,7 +29,6 @@ class _ImagesScreenState extends State<ImagesScreen> {
   List<ImageItem> _imageItems = [];
   bool _isLoading = true;
   String? _errorMessage;
-  int _downloadingCount = 0;
 
   @override
   void initState() {
@@ -41,109 +40,54 @@ class _ImagesScreenState extends State<ImagesScreen> {
     final hasPermission = await PermissionsService.requestStoragePermission(
       context,
     );
-    if (hasPermission) {
-      _loadImages();
-    } else {
-      setState(() {
-        _isLoading = false;
-        _errorMessage = 'Storage permission is required to load images.';
-      });
+    if (!hasPermission) {
+      _setError('Storage permission is required to load images.');
+      return;
     }
+    await _loadImages();
   }
 
   Future<void> _loadImages() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-      _downloadingCount = 0;
-    });
+    _setLoadingState();
 
     try {
-      final dataStore = await DataStore.getInstance();
-      final imageCacheService = await ImageCacheService.getInstance();
-
-      final cachedHashes = await dataStore.getAllImageHashes();
+      // Load cached hashes first for quick display
+      final cachedHashes = await _getCachedHashes();
       if (cachedHashes.isNotEmpty) {
-        final imageItems = <ImageItem>[];
-        for (final hash in cachedHashes) {
-          final imagePath = await imageCacheService.getImagePath(hash);
-          imageItems.add(ImageItem(hash: hash, path: imagePath));
-        }
-
-        setState(() {
-          _imageItems = imageItems;
-          _isLoading = false;
-        });
-      } else {
-        setState(() {
-          _isLoading = false;
-        });
+        final imageItems = await _createImageItems(cachedHashes);
+        _updateImages(imageItems);
       }
 
+      // Then refresh from server
       await _refreshFromServer();
     } catch (e) {
       print('Error loading images: $e');
-      setState(() {
-        _isLoading = false;
-        _errorMessage = 'Failed to load images: ${e.toString()}';
-      });
+      _setError('Failed to load images: ${e.toString()}');
     }
   }
 
   Future<void> _refreshFromServer() async {
     try {
-      final imageCacheService = await ImageCacheService.getInstance();
-
       final hashStrings = await HttpClient.fetchImageHashes();
-
-      final dataStore = await DataStore.getInstance();
-      await dataStore.saveAllImageHashes(hashStrings);
-
-      final imageItems = <ImageItem>[];
-
-      for (int i = 0; i < hashStrings.length; i++) {
-        final hashStr = hashStrings[i];
-        final imagePath = await imageCacheService.getImagePath(hashStr);
-
-        imageItems.add(ImageItem(hash: hashStr, path: imagePath));
-      }
-
-      setState(() {
-        _imageItems = imageItems;
-        _errorMessage = null;
-      });
+      await _saveHashes(hashStrings);
+      final imageItems = await _createImageItems(hashStrings);
+      _updateImages(imageItems);
     } catch (e) {
       print('Error refreshing from server: $e');
-      if (_imageItems.isEmpty) {
-        setState(() {
-          _errorMessage = 'Failed to load images: ${e.toString()}';
-        });
-      } else {
-        if (mounted) {
-          AppSnackBar.showInfo(
-            context,
-            'Showing cached images. Unable to refresh from server.',
-            action: SnackBarAction(label: 'Retry', onPressed: _loadImages),
-          );
-        }
-      }
+      _handleRefreshError();
     }
   }
 
   Future<void> _downloadImage(ImageItem item) async {
-    if (item.path != null || item.isDownloading) {
-      return; // Already downloaded or currently downloading
-    }
+    if (item.path != null || item.isDownloading) return;
 
-    setState(() {
-      item.isDownloading = true;
-    });
+    setState(() => item.isDownloading = true);
 
     try {
       final imageCacheService = await ImageCacheService.getInstance();
       final path = await imageCacheService.downloadImage(item.hash);
 
-      if (path != null && mounted) {
+      if (mounted && path != null) {
         setState(() {
           item.path = path;
           item.isDownloading = false;
@@ -152,19 +96,80 @@ class _ImagesScreenState extends State<ImagesScreen> {
     } catch (e) {
       print('Failed to download image ${item.hash}: $e');
       if (mounted) {
-        setState(() {
-          item.isDownloading = false;
-        });
+        setState(() => item.isDownloading = false);
       }
     }
   }
+
+  // Helper methods
+  Future<List<String>> _getCachedHashes() async {
+    final dataStore = await DataStore.getInstance();
+    return await dataStore.getAllImageHashes();
+  }
+
+  Future<void> _saveHashes(List<String> hashes) async {
+    final dataStore = await DataStore.getInstance();
+    await dataStore.saveAllImageHashes(hashes);
+  }
+
+  Future<List<ImageItem>> _createImageItems(List<String> hashes) async {
+    final imageCacheService = await ImageCacheService.getInstance();
+    final imageItems = <ImageItem>[];
+
+    for (final hash in hashes) {
+      final imagePath = await imageCacheService.getImagePath(hash);
+      imageItems.add(ImageItem(hash: hash, path: imagePath));
+    }
+
+    return imageItems;
+  }
+
+  void _setLoadingState() {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+  }
+
+  void _setError(String message) {
+    setState(() {
+      _isLoading = false;
+      _errorMessage = message;
+    });
+  }
+
+  void _updateImages(List<ImageItem> imageItems) {
+    setState(() {
+      _imageItems = imageItems;
+      _errorMessage = null;
+      _isLoading = false;
+    });
+  }
+
+  void _handleRefreshError() {
+    if (_imageItems.isEmpty) {
+      _setError('Failed to load images from server.');
+    } else if (mounted) {
+      AppSnackBar.showInfo(
+        context,
+        'Showing cached images. Unable to refresh from server.',
+        action: SnackBarAction(label: 'Retry', onPressed: _loadImages),
+      );
+    }
+  }
+
+  int get _downloadedCount =>
+      _imageItems.where((item) => item.path != null).length;
+
+  int get _downloadingCount =>
+      _imageItems.where((item) => item.isDownloading).length;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: ImagesAppBar(
         onRefresh: _loadImages,
-        imageCount: _imageItems.where((item) => item.path != null).length,
+        imageCount: _downloadedCount,
         downloadingCount: _downloadingCount,
       ),
       body: _buildBody(),
@@ -181,7 +186,7 @@ class _ImagesScreenState extends State<ImagesScreen> {
     }
 
     if (_imageItems.isEmpty) {
-      return EmptyImagesView(downloadingCount: _downloadingCount);
+      return const EmptyImagesView(downloadingCount: 0);
     }
 
     return ImageGrid(
@@ -193,22 +198,17 @@ class _ImagesScreenState extends State<ImagesScreen> {
   }
 
   void _showFullImage(BuildContext context, String path, String hash) {
-    // Get all image paths and hashes (including null paths for not-yet-downloaded images)
-    final allPaths = _imageItems.map((item) => item.path).toList();
-    final allHashes = _imageItems.map((item) => item.hash).toList();
-
-    // Find the index of the current image
     final currentIndex = _imageItems.indexWhere((item) => item.hash == hash);
-
-    if (currentIndex == -1 || allPaths.isEmpty) return;
+    if (currentIndex == -1) return;
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => FullImageScreen(
-          imagePaths: allPaths,
-          hashes: allHashes,
+          imagePaths: _imageItems.map((item) => item.path).toList(),
+          hashes: _imageItems.map((item) => item.hash).toList(),
           initialIndex: currentIndex,
+          onImageDeleted: _loadImages,
         ),
       ),
     );
