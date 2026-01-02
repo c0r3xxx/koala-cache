@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'image_detail_screen.dart';
 import 'image_item.dart';
 import 'package:koala_cache/services/data_store.dart';
+import 'package:koala_cache/services/image_cache_service.dart';
+import 'package:koala_cache/screens/widgets/snackbar.dart';
 
 class ImagesScreen extends StatefulWidget {
   const ImagesScreen({super.key});
@@ -23,13 +25,33 @@ class _ImagesScreenState extends State<ImagesScreen> {
 
   Future<void> _loadImageHashes() async {
     try {
+      // First, load from local cache for immediate display
       final dataStore = await DataStore.getInstance();
-      final hashes = await dataStore.getAllImageHashes();
+      final cachedHashes = await dataStore.getAllImageHashes();
 
       setState(() {
-        _imageHashes = hashes;
+        _imageHashes = cachedHashes;
         _isLoading = false;
       });
+
+      // Then fetch from server in the background and update
+      try {
+        final serverHashes = await ImageCacheService.fetchAndCacheImageHashes();
+
+        // Update UI with fresh data from server
+        setState(() {
+          _imageHashes = serverHashes;
+        });
+      } catch (e) {
+        // Server fetch failed, but we already have cached data showing
+        debugPrint('Failed to fetch fresh hashes from server: $e');
+        if (mounted) {
+          AppSnackBar.showWarning(
+            context,
+            'Failed to refresh from server. Showing cached images.',
+          );
+        }
+      }
     } catch (e) {
       setState(() {
         _errorMessage = 'Failed to load images: $e';

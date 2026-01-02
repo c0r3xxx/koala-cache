@@ -224,4 +224,22 @@ class ImageCacheService {
       return null;
     }
   }
+
+  /// Fetch image hashes from server and update the DataStore cache
+  /// Returns the list of hashes fetched from the server
+  static Future<List<String>> fetchAndCacheImageHashes() async {
+    try {
+      // Fetch hashes from server using HttpClient
+      final hashes = await HttpClient.fetchImageHashes();
+
+      // Store the hashes in DataStore
+      final dataStore = await DataStore.getInstance();
+      await dataStore.saveAllImageHashes(hashes);
+
+      return hashes;
+    } catch (e) {
+      debugPrint('Failed to fetch and cache image hashes: $e');
+      rethrow;
+    }
+  }
 }
