@@ -73,7 +73,7 @@ class HttpClient {
     }
 
     try {
-      final response = await _authenticatedRequest('GET', '/health-auth');
+      final response = await _authenticatedRequest('GET', 'health-auth');
 
       final success = response.statusCode == 200;
       final message = success
